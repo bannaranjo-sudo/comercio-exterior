@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import { autorizar, ErrorAutorizacion, type CodigoError, type ContextoAcceso } from "../src/lib/auth/autorizacion";
@@ -32,6 +32,7 @@ describe("Centro de Inteligencia", () => {
   const ctx: Record<string, ContextoAcceso> = {};
 
   const limpiar = async () => {
+    await db.registroUso.deleteMany();
     await db.aprobacion.deleteMany();
     await db.resultado.deleteMany();
     await db.ejecucion.deleteMany();
@@ -98,14 +99,14 @@ describe("Centro de Inteligencia", () => {
 
     const asignar = (modelo: string, proveedor = "OPENAI", prioridad = 1) =>
       servicio.asignarModelo(ctx.adminAlfa, { agenteId: doc.id, proveedor, modelo, prioridad });
-    await assert.rejects(asignar("modelo-a"), rechazaValidacion); // proveedor sin habilitar
+    await assert.rejects(asignar("gpt-5-mini"), rechazaValidacion); // proveedor sin habilitar
     await servicio.guardarProveedor(ctx.adminAlfa, { proveedor: "OPENAI", habilitado: true, notas: "" });
     await servicio.guardarProveedor(ctx.adminAlfa, { proveedor: "ANTHROPIC", habilitado: true, notas: "" });
-    await asignar("modelo-a");
-    await asignar("modelo-b"); // misma prioridad: reemplaza
+    await asignar("gpt-5-mini");
+    await asignar("gpt-5"); // misma prioridad: reemplaza
     await asignar("modelo-c", "ANTHROPIC", 2);
     const asignaciones = (await servicio.listarAgentes(ctx.adminAlfa)).find((a) => a.id === doc.id)!.asignaciones;
-    assert.deepEqual(asignaciones.map((a) => [a.proveedor, a.modelo, a.prioridad]), [["OPENAI", "modelo-b", 1], ["ANTHROPIC", "modelo-c", 2]]);
+    assert.deepEqual(asignaciones.map((a) => [a.proveedor, a.modelo, a.prioridad]), [["OPENAI", "gpt-5", 1], ["ANTHROPIC", "modelo-c", 2]]);
 
     await assert.rejects(asignar("modelo con espacios"), rechazaValidacion);
     await assert.rejects(asignar("x", "PROVEEDOR_FALSO"), rechazaValidacion);
@@ -185,3 +186,4 @@ describe("Centro de Inteligencia", () => {
     await assert.rejects(servicio.decidirAprobacion(aprobador, { aprobacionId: aprobacion.id, decision: "RECHAZADO", comentario: "" }), rechazaValidacion);
   });
 });
+

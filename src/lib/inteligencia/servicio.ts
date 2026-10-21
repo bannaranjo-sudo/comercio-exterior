@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import type { ContextoAcceso } from "@/lib/auth/autorizacion";
-import { esProveedor, LISTA_PROVEEDORES } from "@/lib/inteligencia/proveedores";
+import { ErrorProveedorIA, traducirError, type CodigoErrorProveedor } from "@/lib/inteligencia/errores";
+import { LIMITES } from "@/lib/inteligencia/limites";
+import { modelosPermitidos } from "@/lib/inteligencia/modelos";
+import { esProveedor, LISTA_PROVEEDORES, obtenerAdaptador } from "@/lib/inteligencia/proveedores";
 import type { ProveedorIA } from "@/generated/prisma/enums";
 
 // Lógica de negocio del Centro de Inteligencia.
@@ -23,6 +26,13 @@ function texto(valor: unknown, campo: string, min: number, max: number): string 
     throw new ErrorValidacion(`${campo}: debe tener entre ${min} y ${max} caracteres.`);
   }
   return limpio;
+}
+
+function validarModeloPermitido(proveedor: ProveedorIA, modelo: string): void {
+  const permitidos = modelosPermitidos(proveedor);
+  if (permitidos && !permitidos.includes(modelo)) {
+    throw new ErrorValidacion("Modelo no autorizado para este proveedor.");
+  }
 }
 
 const AGENTES_PREDETERMINADOS = [
@@ -149,6 +159,7 @@ export async function asignarModelo(
   if (!esProveedor(datos.proveedor)) throw new ErrorValidacion("Proveedor no válido.");
   const modelo = texto(datos.modelo, "Modelo", 1, 100);
   if (!MODELO.test(modelo)) throw new ErrorValidacion("Modelo: contiene caracteres no permitidos.");
+  validarModeloPermitido(datos.proveedor, modelo);
   const prioridad = Number(datos.prioridad ?? 1);
   if (!Number.isInteger(prioridad) || prioridad < 1 || prioridad > 5) {
     throw new ErrorValidacion("Prioridad: debe ser un entero entre 1 y 5.");
@@ -209,4 +220,105 @@ export async function decidirAprobacion(
     data: { estado: datos.decision, decididaPorId: ctx.usuarioId, decididaEn: new Date(), comentario },
   });
   if (count === 0) throw new ErrorValidacion("La aprobación no existe o ya fue resuelta.");
+}
+
+// ---------------------------------------------------------------------------
+// Prueba de conexión con proveedores. No devuelve ni almacena texto de mensajes o respuestas.
+// ---------------------------------------------------------------------------
+
+export type ResultadoPrueba =
+  | { estado: "EXITOSA"; proveedor: ProveedorIA; modelo: string; duracionMs: number; tokensEntrada: number | null; tokensSalida: number | null }
+  | { estado: "FALLIDA"; proveedor: ProveedorIA; modelo: string; duracionMs: number; codigo: CodigoErrorProveedor; mensaje: string };
+
+/** Las llamadas reales solo se permiten con IA_PRUEBA_REAL_AUTORIZADA=true en el servidor. */
+export const pruebaRealAutorizada = (): boolean => process.env.IA_PRUEBA_REAL_AUTORIZADA === "true";
+
+export function estadoIntegracion() {
+  return {
+    claveOpenAIConfigurada: Boolean(process.env.OPENAI_API_KEY),
+    pruebaRealAutorizada: pruebaRealAutorizada(),
+    modelosOpenAI: modelosPermitidos("OPENAI") ?? [],
+  };
+}
+
+async function verificarLimites(ctx: ContextoAcceso): Promise<void> {
+  const ahora = Date.now();
+  const [pruebas, solicitudes] = await Promise.all([
+    db.registroUso.count({
+      where: {
+        empresaId: ctx.empresaId,
+        tipo: "PRUEBA_CONEXION",
+        creadoEn: { gte: new Date(ahora - LIMITES.pruebas.ventanaMs) },
+      },
+    }),
+    db.registroUso.count({
+      where: { empresaId: ctx.empresaId, creadoEn: { gte: new Date(ahora - LIMITES.solicitudes.ventanaMs) } },
+    }),
+  ]);
+  if (pruebas >= LIMITES.pruebas.max || solicitudes >= LIMITES.solicitudes.max) {
+    throw new ErrorProveedorIA("LIMITE_SOLICITUDES");
+  }
+}
+
+export async function probarConexion(
+  ctx: ContextoAcceso,
+  datos: { proveedor: unknown; modelo: unknown },
+): Promise<ResultadoPrueba> {
+  if (!esProveedor(datos.proveedor)) throw new ErrorValidacion("Proveedor no válido.");
+  const proveedor: ProveedorIA = datos.proveedor;
+  const modelo = texto(datos.modelo, "Modelo", 1, 100);
+  if (!MODELO.test(modelo)) throw new ErrorValidacion("Modelo: contiene caracteres no permitidos.");
+  validarModeloPermitido(proveedor, modelo);
+  if (!pruebaRealAutorizada()) {
+    throw new ErrorValidacion("Las pruebas reales de conexión no están autorizadas en el servidor.");
+  }
+  const config = await db.configuracionProveedor.findUnique({
+    where: { empresaId_proveedor: { empresaId: ctx.empresaId, proveedor } },
+  });
+  if (!config?.habilitado) throw new ErrorValidacion("Habilite el proveedor en Configuración primero.");
+
+  const registro = async (estado: "EXITOSA" | "FALLIDA", cambios: object, id: string) =>
+    db.registroUso.update({ where: { id }, data: { estado, ...cambios } });
+
+  const inicio = Date.now();
+  let uso: { id: string };
+  try {
+    await verificarLimites(ctx);
+    uso = await db.registroUso.create({
+      data: { empresaId: ctx.empresaId, usuarioId: ctx.usuarioId, tipo: "PRUEBA_CONEXION", proveedor, modelo },
+    });
+  } catch (error) {
+    const e = traducirError(error);
+    return { estado: "FALLIDA", proveedor, modelo, duracionMs: 0, codigo: e.codigo, mensaje: e.message };
+  }
+
+  try {
+    const respuesta = await obtenerAdaptador(proveedor).generar({
+      referencia: { proveedor, modelo },
+      mensajes: [{ rol: "user", contenido: "Responde únicamente: OK" }],
+      maximoTokens: LIMITES.tokensSalidaPrueba,
+    });
+    const duracionMs = Date.now() - inicio;
+    const tokensEntrada = respuesta.uso?.tokensEntrada ?? null;
+    const tokensSalida = respuesta.uso?.tokensSalida ?? null;
+    await registro("EXITOSA", { duracionMs, tokensEntrada, tokensSalida }, uso.id);
+    return { estado: "EXITOSA", proveedor, modelo, duracionMs, tokensEntrada, tokensSalida };
+  } catch (error) {
+    const e = traducirError(error);
+    const duracionMs = Date.now() - inicio;
+    await registro("FALLIDA", { duracionMs, codigoError: e.codigo }, uso.id);
+    return { estado: "FALLIDA", proveedor, modelo, duracionMs, codigo: e.codigo, mensaje: e.message };
+  }
+}
+
+export function listarUso(ctx: ContextoAcceso) {
+  return db.registroUso.findMany({
+    where: { empresaId: ctx.empresaId },
+    select: {
+      id: true, tipo: true, proveedor: true, modelo: true, estado: true, codigoError: true,
+      duracionMs: true, tokensEntrada: true, tokensSalida: true, creadoEn: true,
+    },
+    orderBy: { creadoEn: "desc" },
+    take: 10,
+  });
 }

@@ -10,6 +10,7 @@ import {
   accionCrearAgente,
   accionInicializarAgentes,
 } from "@/lib/inteligencia/acciones"
+import { modelosPermitidos } from "@/lib/inteligencia/modelos"
 import { PROVEEDORES } from "@/lib/inteligencia/proveedores"
 import { listarAgentes, listarProveedores } from "@/lib/inteligencia/servicio"
 
@@ -21,9 +22,11 @@ export default async function Page() {
   const puedeAdministrar = ctx.permisos.has("inteligencia:administrar_agentes")
   const [agentes, proveedores] = await Promise.all([listarAgentes(ctx), listarProveedores(ctx)])
   const habilitados = proveedores.filter((p) => p.habilitado)
+  const modelosOpenAI = modelosPermitidos("OPENAI") ?? []
 
   return (
     <div className="space-y-6">
+      <datalist id="modelos-autorizados">{modelosOpenAI.map((m) => <option key={m} value={m} />)}</datalist>
       {agentes.length === 0 && (
         <Card>
           <CardHeader>
@@ -86,7 +89,7 @@ export default async function Page() {
                           </option>
                         ))}
                       </select>
-                      <input name="modelo" aria-label="Modelo" placeholder="Identificador del modelo" maxLength={100} className={claseCampo} required />
+                      <input name="modelo" aria-label="Modelo" placeholder="Modelo" list="modelos-autorizados" maxLength={100} className={claseCampo} required />
                       <input name="prioridad" aria-label="Prioridad" type="number" min={1} max={5} defaultValue={1} className={claseCampo} />
                     </div>
                   </FormularioAccion>

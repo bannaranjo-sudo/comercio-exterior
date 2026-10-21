@@ -51,6 +51,8 @@ export function registrarAdaptador(adaptador: AdaptadorProveedor): void {
   adaptadores.set(adaptador.proveedor, adaptador);
 }
 
+export const adaptadorRegistrado = (proveedor: ProveedorIA): boolean => adaptadores.has(proveedor);
+
 export function obtenerAdaptador(proveedor: ProveedorIA): AdaptadorProveedor {
   const adaptador = adaptadores.get(proveedor);
   if (!adaptador) throw new ErrorProveedorNoDisponible(proveedor);

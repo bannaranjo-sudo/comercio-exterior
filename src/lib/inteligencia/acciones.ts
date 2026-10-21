@@ -4,21 +4,24 @@ import { revalidatePath } from "next/cache";
 import { ErrorAutorizacion, type ContextoAcceso } from "@/lib/auth/autorizacion";
 import { requirePermissionActiva } from "@/lib/auth/sesion";
 import type { CodigoPermiso } from "@/lib/permisos/catalogo";
+import { registrarAdaptadoresPredeterminados } from "@/lib/inteligencia/adaptadores";
+import { PROVEEDORES } from "@/lib/inteligencia/proveedores";
 import * as servicio from "@/lib/inteligencia/servicio";
 
 export type EstadoAccion = { ok?: string; error?: string };
 
 // Toda acción exige sesión y permiso en la empresa activa (validada en servidor).
-// Ninguna recibe empresaId del cliente ni invoca modelos de IA.
+// Ninguna recibe empresaId del cliente. Solo la prueba de conexión llama a un proveedor, y únicamente
+// si el servidor la autoriza (IA_PRUEBA_REAL_AUTORIZADA); los análisis permanecen deshabilitados.
 async function proteger(
   permiso: CodigoPermiso,
   mensajeOk: string,
-  operacion: (ctx: ContextoAcceso) => Promise<void>,
+  operacion: (ctx: ContextoAcceso) => Promise<string | void>,
 ): Promise<EstadoAccion> {
   try {
-    await operacion(await requirePermissionActiva(permiso));
+    const detalle = await operacion(await requirePermissionActiva(permiso));
     revalidatePath("/inteligencia", "layout");
-    return { ok: mensajeOk };
+    return { ok: detalle || mensajeOk };
   } catch (error) {
     if (error instanceof servicio.ErrorValidacion) return { error: error.message };
     if (error instanceof ErrorAutorizacion) return { error: "No tiene permiso para realizar esta acción." };
@@ -89,4 +92,18 @@ export async function accionDecidirAprobacion(_: EstadoAccion, formData: FormDat
       comentario: campo(formData, "comentario"),
     }),
   );
+}
+
+/** Prueba de conexión: solo devuelve estado, modelo y métricas; nunca texto del proveedor ni detalles internos. */
+export async function accionProbarConexion(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:configurar", "Prueba finalizada.", async (ctx) => {
+    registrarAdaptadoresPredeterminados();
+    const r = await servicio.probarConexion(ctx, {
+      proveedor: campo(formData, "proveedor"),
+      modelo: campo(formData, "modelo"),
+    });
+    if (r.estado === "FALLIDA") throw new servicio.ErrorValidacion(r.mensaje);
+    const tokens = `${r.tokensEntrada ?? "n/d"} entrada / ${r.tokensSalida ?? "n/d"} salida`;
+    return `Conexión correcta · ${PROVEEDORES[r.proveedor].nombre} · ${r.modelo} · ${r.duracionMs} ms · tokens: ${tokens}`;
+  });
 }

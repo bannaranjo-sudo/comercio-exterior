@@ -4,17 +4,21 @@ import { claseCampo } from "@/components/inteligencia/estilos"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirPermisoEmpresaActiva } from "@/lib/auth/sesion"
-import { accionGuardarProveedor } from "@/lib/inteligencia/acciones"
+import { accionGuardarProveedor, accionProbarConexion } from "@/lib/inteligencia/acciones"
 import { PROVEEDORES } from "@/lib/inteligencia/proveedores"
-import { listarProveedores } from "@/lib/inteligencia/servicio"
+import { estadoIntegracion, listarProveedores, listarUso } from "@/lib/inteligencia/servicio"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export const metadata = { title: "Configuración de IA · Comercio Exterior" }
+
+const fecha = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short" })
 
 export default async function Page() {
   const ctx = await exigirPermisoEmpresaActiva("inteligencia:consultar")
   if (!ctx) return <AccesoDenegado />
   const puedeConfigurar = ctx.permisos.has("inteligencia:configurar")
-  const proveedores = await listarProveedores(ctx)
+  const [proveedores, uso] = await Promise.all([listarProveedores(ctx), listarUso(ctx)])
+  const integracion = estadoIntegracion()
 
   return (
     <div className="space-y-4">
@@ -59,6 +63,69 @@ export default async function Page() {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>Conexión con OpenAI</CardTitle>
+            <Badge variant={integracion.claveOpenAIConfigurada ? "default" : "secondary"}>
+              {integracion.claveOpenAIConfigurada ? "Clave del servidor configurada" : "Clave del servidor no configurada"}
+            </Badge>
+            <Badge variant={integracion.pruebaRealAutorizada ? "default" : "secondary"}>
+              {integracion.pruebaRealAutorizada ? "Prueba real autorizada" : "Prueba real no autorizada"}
+            </Badge>
+          </div>
+          <CardDescription>
+            La clave se define solo como variable de entorno del servidor. La prueba envía un mensaje mínimo y
+            muestra únicamente estado, modelo y consumo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {puedeConfigurar ? (
+            <FormularioAccion accion={accionProbarConexion} etiqueta="Probar conexión" variante="outline">
+              <input type="hidden" name="proveedor" value="OPENAI" />
+              <select name="modelo" aria-label="Modelo de OpenAI" className={claseCampo} required>
+                {integracion.modelosOpenAI.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </FormularioAccion>
+          ) : (
+            <p className="text-sm text-muted-foreground">Solo quienes configuran el módulo pueden probar la conexión.</p>
+          )}
+
+          {uso.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Modelo</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Duración</TableHead>
+                  <TableHead>Tokens (ent./sal.)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {uso.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell>{fecha.format(u.creadoEn)}</TableCell>
+                    <TableCell>{PROVEEDORES[u.proveedor].nombre} · {u.modelo}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.estado === "FALLIDA" ? "destructive" : "secondary"}>
+                        {u.estado === "FALLIDA" ? `Fallida (${u.codigoError})` : u.estado === "EXITOSA" ? "Exitosa" : "En curso"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{u.duracionMs === null ? "—" : `${u.duracionMs} ms`}</TableCell>
+                    <TableCell>{u.tokensEntrada ?? "—"} / {u.tokensSalida ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
