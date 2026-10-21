@@ -2,10 +2,10 @@ export type Accion = "consultar" | "crear" | "editar" | "eliminar" | "administra
 
 export type NombreRol = "Administrador" | "Operador" | "Consulta";
 
-const CRUD: readonly Accion[] = ["consultar", "crear", "editar", "eliminar"];
+const CRUD = ["consultar", "crear", "editar", "eliminar"] as const;
 
 /** Acciones disponibles por módulo. */
-export const MODULOS: Readonly<Record<string, readonly Accion[]>> = {
+export const MODULOS = {
   administracion: [...CRUD, "administrar"],
   operaciones: CRUD,
   logistica: CRUD,
@@ -14,13 +14,22 @@ export const MODULOS: Readonly<Record<string, readonly Accion[]>> = {
   documentos: CRUD,
   terceros: CRUD,
   reportes: ["consultar", "crear"],
-};
+} as const satisfies Record<string, readonly Accion[]>;
+
+export type ModuloId = keyof typeof MODULOS;
+
+/** Código de permiso válido, p. ej. "operaciones:crear". */
+export type CodigoPermiso = {
+  [M in ModuloId]: `${M}:${(typeof MODULOS)[M][number]}`;
+}[ModuloId];
+
+const ENTRADAS = Object.entries(MODULOS) as [string, readonly Accion[]][];
 
 export const codigoPermiso = (modulo: string, accion: Accion): string =>
   `${modulo}:${accion}`;
 
 export const CATALOGO_PERMISOS: readonly { codigo: string; descripcion: string }[] =
-  Object.entries(MODULOS).flatMap(([modulo, acciones]) =>
+  ENTRADAS.flatMap(([modulo, acciones]) =>
     acciones.map((accion) => ({
       codigo: codigoPermiso(modulo, accion),
       descripcion: `${accion} en ${modulo}`,
@@ -29,8 +38,7 @@ export const CATALOGO_PERMISOS: readonly { codigo: string; descripcion: string }
 
 const todos = CATALOGO_PERMISOS.map((p) => p.codigo);
 const operativos = (acciones: readonly Accion[]) =>
-  Object.entries(MODULOS)
-    .filter(([modulo]) => modulo !== "administracion")
+  ENTRADAS.filter(([modulo]) => modulo !== "administracion")
     .flatMap(([modulo, disponibles]) =>
       disponibles
         .filter((a) => acciones.includes(a))

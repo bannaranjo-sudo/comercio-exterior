@@ -7,9 +7,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  User,
 } from "lucide-react"
 
+import { MenuUsuario, type DatosSesion } from "@/components/layout/menu-usuario"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,9 +19,10 @@ type Props = {
   colapsado: boolean
   alAlternarColapso: () => void
   alAbrirMenu: () => void
+  sesion: DatosSesion
 }
 
-export function Topbar({ colapsado, alAlternarColapso, alAbrirMenu }: Props) {
+export function Topbar({ colapsado, alAlternarColapso, alAbrirMenu, sesion }: Props) {
   const { nombre } = moduloActivo(usePathname())
   const IconoColapso = colapsado ? PanelLeftOpen : PanelLeftClose
 
@@ -69,14 +70,7 @@ export function Topbar({ colapsado, alAlternarColapso, alAbrirMenu }: Props) {
         <Button variant="ghost" size="icon" aria-label="Notificaciones" disabled>
           <Bell className="size-4" aria-hidden />
         </Button>
-        <span
-          className="ml-1 flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"
-          title="Espacio reservado para el perfil"
-          role="img"
-          aria-label="Perfil (pendiente)"
-        >
-          <User className="size-4" aria-hidden />
-        </span>
+        <MenuUsuario {...sesion} />
       </div>
     </header>
   )

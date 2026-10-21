@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 
+import type { DatosSesion } from "@/components/layout/menu-usuario"
 import { SidebarNav } from "@/components/layout/sidebar-nav"
 import { Topbar } from "@/components/layout/topbar"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, sesion }: { children: React.ReactNode; sesion: DatosSesion }) {
   const [colapsado, setColapsado] = useState(false)
   const [menuAbierto, setMenuAbierto] = useState(false)
 
@@ -40,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           colapsado={colapsado}
           alAlternarColapso={() => setColapsado((v) => !v)}
           alAbrirMenu={() => setMenuAbierto(true)}
+          sesion={sesion}
         />
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>

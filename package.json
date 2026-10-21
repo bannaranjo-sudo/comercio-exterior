@@ -8,12 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx tests/preparar-db.mts && tsx --import ./tests/setup.ts --test --test-concurrency=1 tests/*.test.ts",
+    "auth:crear-admin": "tsx scripts/crear-admin.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "better-auth": "1.7.12",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "dotenv": "18.0.8",

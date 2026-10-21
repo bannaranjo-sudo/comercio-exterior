@@ -28,12 +28,67 @@ model Usuario {
   correo        String   @unique
   nombre        String
   activo        Boolean  @default(true)
+  emailVerified Boolean  @default(false) @map("correo_verificado")
+  image         String?
   creadoEn      DateTime @default(now()) @map("creado_en")
   actualizadoEn DateTime @updatedAt @map("actualizado_en")
 
   empresas EmpresaUsuario[]
+  sesiones Session[]
+  cuentas  Account[]
 
   @@map("usuarios")
+}
+
+// Tablas de Better Auth. Las credenciales viven solo en Account; los usuarios sin cuenta no pueden iniciar sesión.
+model Session {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  token     String   @unique
+  expiresAt DateTime @map("expira_en")
+  ipAddress String?  @map("ip")
+  userAgent String?  @map("agente_usuario")
+  userId    String   @map("usuario_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("creado_en")
+  updatedAt DateTime @updatedAt @map("actualizado_en")
+
+  user Usuario @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sesiones")
+}
+
+model Account {
+  id                    String    @id @default(uuid(7)) @db.Uuid
+  accountId             String    @map("cuenta_id")
+  providerId            String    @map("proveedor")
+  userId                String    @map("usuario_id") @db.Uuid
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?   @map("hash_clave")
+  createdAt             DateTime  @default(now()) @map("creado_en")
+  updatedAt             DateTime  @updatedAt @map("actualizado_en")
+
+  user Usuario @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("cuentas")
+}
+
+model Verification {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expira_en")
+  createdAt  DateTime @default(now()) @map("creado_en")
+  updatedAt  DateTime @updatedAt @map("actualizado_en")
+
+  @@index([identifier])
+  @@map("verificaciones")
 }
 
 // Rol: pertenece a una sola empresa (los roles no se comparten entre empresas).
