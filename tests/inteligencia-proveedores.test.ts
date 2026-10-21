@@ -174,6 +174,15 @@ describe("integración de proveedores (adaptadores simulados)", () => {
     assert.equal((await servicio.probarConexion(adminBeta, { proveedor: "OPENAI", modelo: "gpt-5-mini" })).estado, "EXITOSA");
   });
 
+  it("el límite se respeta con solicitudes simultáneas", async () => {
+    const resultados = await Promise.all(
+      Array.from({ length: 10 }, () => servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" })),
+    );
+    assert.equal(resultados.filter((r) => r.estado === "EXITOSA").length, LIMITES.pruebas.max);
+    assert.equal(llamadas.length, LIMITES.pruebas.max);
+    assert.equal(await db.registroUso.count({ where: { empresaId: alfaId } }), LIMITES.pruebas.max);
+  });
+
   it("es compatible con varios proveedores y aísla el uso por empresa", async () => {
     comportamiento = ok;
     assert.equal((await servicio.probarConexion(adminAlfa, { proveedor: "ANTHROPIC", modelo: "modelo-libre" })).estado, "EXITOSA");

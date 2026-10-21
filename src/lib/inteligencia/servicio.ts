@@ -241,23 +241,37 @@ export function estadoIntegracion() {
   };
 }
 
-async function verificarLimites(ctx: ContextoAcceso): Promise<void> {
-  const ahora = Date.now();
-  const [pruebas, solicitudes] = await Promise.all([
-    db.registroUso.count({
-      where: {
-        empresaId: ctx.empresaId,
-        tipo: "PRUEBA_CONEXION",
-        creadoEn: { gte: new Date(ahora - LIMITES.pruebas.ventanaMs) },
-      },
-    }),
-    db.registroUso.count({
-      where: { empresaId: ctx.empresaId, creadoEn: { gte: new Date(ahora - LIMITES.solicitudes.ventanaMs) } },
-    }),
-  ]);
-  if (pruebas >= LIMITES.pruebas.max || solicitudes >= LIMITES.solicitudes.max) {
-    throw new ErrorProveedorIA("LIMITE_SOLICITUDES");
-  }
+/**
+ * Verifica los límites y reserva el registro de uso en una sola transacción, serializada por empresa
+ * con un bloqueo asesor de PostgreSQL: solicitudes simultáneas no pueden superar el límite.
+ */
+async function reservarUso(
+  ctx: ContextoAcceso,
+  datos: { proveedor: ProveedorIA; modelo: string },
+): Promise<{ id: string }> {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.empresaId}, 0))`;
+    const ahora = Date.now();
+    const [pruebas, solicitudes] = await Promise.all([
+      tx.registroUso.count({
+        where: {
+          empresaId: ctx.empresaId,
+          tipo: "PRUEBA_CONEXION",
+          creadoEn: { gte: new Date(ahora - LIMITES.pruebas.ventanaMs) },
+        },
+      }),
+      tx.registroUso.count({
+        where: { empresaId: ctx.empresaId, creadoEn: { gte: new Date(ahora - LIMITES.solicitudes.ventanaMs) } },
+      }),
+    ]);
+    if (pruebas >= LIMITES.pruebas.max || solicitudes >= LIMITES.solicitudes.max) {
+      throw new ErrorProveedorIA("LIMITE_SOLICITUDES");
+    }
+    return tx.registroUso.create({
+      data: { empresaId: ctx.empresaId, usuarioId: ctx.usuarioId, tipo: "PRUEBA_CONEXION", ...datos },
+      select: { id: true },
+    });
+  });
 }
 
 export async function probarConexion(
@@ -283,10 +297,7 @@ export async function probarConexion(
   const inicio = Date.now();
   let uso: { id: string };
   try {
-    await verificarLimites(ctx);
-    uso = await db.registroUso.create({
-      data: { empresaId: ctx.empresaId, usuarioId: ctx.usuarioId, tipo: "PRUEBA_CONEXION", proveedor, modelo },
-    });
+    uso = await reservarUso(ctx, { proveedor, modelo });
   } catch (error) {
     const e = traducirError(error);
     return { estado: "FALLIDA", proveedor, modelo, duracionMs: 0, codigo: e.codigo, mensaje: e.message };
