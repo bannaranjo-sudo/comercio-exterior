@@ -1,4 +1,13 @@
-export type Accion = "consultar" | "crear" | "editar" | "eliminar" | "administrar";
+export type Accion =
+  | "consultar"
+  | "crear"
+  | "editar"
+  | "eliminar"
+  | "administrar"
+  | "configurar"
+  | "administrar_agentes"
+  | "ejecutar"
+  | "aprobar";
 
 export type NombreRol = "Administrador" | "Operador" | "Consulta";
 
@@ -14,6 +23,7 @@ export const MODULOS = {
   documentos: CRUD,
   terceros: CRUD,
   reportes: ["consultar", "crear"],
+  inteligencia: ["consultar", "configurar", "administrar_agentes", "ejecutar", "aprobar"],
 } as const satisfies Record<string, readonly Accion[]>;
 
 export type ModuloId = keyof typeof MODULOS;
@@ -54,8 +64,8 @@ export const ROLES_INICIALES: Readonly<
     permisos: todos,
   },
   Operador: {
-    descripcion: "Consulta, creación y edición en módulos operativos.",
-    permisos: operativos(["consultar", "crear", "editar"]),
+    descripcion: "Consulta, creación y edición en módulos operativos; puede ejecutar análisis.",
+    permisos: operativos(["consultar", "crear", "editar", "ejecutar"]),
   },
   Consulta: {
     descripcion: "Solo lectura en módulos operativos.",

@@ -20,6 +20,13 @@ model Empresa {
   roles    Rol[]
   miembros EmpresaUsuario[]
 
+  iaProveedores  ConfiguracionProveedor[]
+  iaAgentes      Agente[]
+  iaAsignaciones AsignacionModelo[]
+  iaEjecuciones  Ejecucion[]
+  iaResultados   Resultado[]
+  iaAprobaciones Aprobacion[]
+
   @@map("empresas")
 }
 
@@ -36,6 +43,9 @@ model Usuario {
   empresas EmpresaUsuario[]
   sesiones Session[]
   cuentas  Account[]
+
+  iaEjecuciones  Ejecucion[]
+  iaAprobaciones Aprobacion[]
 
   @@map("usuarios")
 }
@@ -151,4 +161,172 @@ model EmpresaUsuario {
   @@unique([empresaId, usuarioId])
   @@index([usuarioId])
   @@map("empresa_usuarios")
+}
+
+// ---------------------------------------------------------------------------
+// Centro de Inteligencia. Todo registro pertenece a una empresa (empresa_id) y las
+// relaciones obligatorias usan claves foráneas compuestas (id, empresa_id) para impedir
+// vínculos entre empresas. No se almacenan credenciales de proveedores.
+// ---------------------------------------------------------------------------
+
+enum ProveedorIA {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+
+  @@map("proveedor_ia")
+}
+
+enum TipoAgente {
+  ORQUESTADOR
+  ESPECIALISTA
+
+  @@map("tipo_agente")
+}
+
+enum EstadoEjecucion {
+  PENDIENTE
+  EN_CURSO
+  COMPLETADA
+  FALLIDA
+  CANCELADA
+
+  @@map("estado_ejecucion")
+}
+
+enum EstadoAprobacion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+
+  @@map("estado_aprobacion")
+}
+
+model ConfiguracionProveedor {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  empresaId     String      @map("empresa_id") @db.Uuid
+  proveedor     ProveedorIA
+  habilitado    Boolean     @default(false)
+  notas         String?
+  creadoEn      DateTime    @default(now()) @map("creado_en")
+  actualizadoEn DateTime    @updatedAt @map("actualizado_en")
+
+  empresa      Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  asignaciones AsignacionModelo[]
+
+  @@unique([empresaId, proveedor])
+  @@map("ia_proveedores")
+}
+
+model Agente {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  empresaId     String     @map("empresa_id") @db.Uuid
+  codigo        String
+  nombre        String
+  descripcion   String?
+  tipo          TipoAgente @default(ESPECIALISTA)
+  instrucciones String?
+  activo        Boolean    @default(true)
+  orquestadorId String?    @map("orquestador_id") @db.Uuid
+  creadoEn      DateTime   @default(now()) @map("creado_en")
+  actualizadoEn DateTime   @updatedAt @map("actualizado_en")
+
+  empresa      Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  orquestador  Agente?            @relation("Orquestacion", fields: [orquestadorId], references: [id], onDelete: SetNull)
+  subagentes   Agente[]           @relation("Orquestacion")
+  asignaciones AsignacionModelo[]
+  ejecuciones  Ejecucion[]
+
+  @@unique([empresaId, codigo])
+  @@unique([id, empresaId])
+  @@map("ia_agentes")
+}
+
+// Proveedor y modelo asignados a un agente; editable sin cambiar código. Menor prioridad = se usa primero.
+model AsignacionModelo {
+  id            String      @id @default(uuid(7)) @db.Uuid
+  empresaId     String      @map("empresa_id") @db.Uuid
+  agenteId      String      @map("agente_id") @db.Uuid
+  proveedor     ProveedorIA
+  modelo        String
+  prioridad     Int         @default(1)
+  parametros    Json?
+  activa        Boolean     @default(true)
+  creadoEn      DateTime    @default(now()) @map("creado_en")
+  actualizadoEn DateTime    @updatedAt @map("actualizado_en")
+
+  empresa                Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  agente                 Agente                 @relation(fields: [agenteId, empresaId], references: [id, empresaId], onDelete: Cascade)
+  configuracionProveedor ConfiguracionProveedor @relation(fields: [empresaId, proveedor], references: [empresaId, proveedor], onDelete: Restrict)
+
+  @@unique([agenteId, prioridad])
+  @@index([empresaId])
+  @@map("ia_asignaciones")
+}
+
+model Ejecucion {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  empresaId        String          @map("empresa_id") @db.Uuid
+  agenteId         String          @map("agente_id") @db.Uuid
+  solicitadaPorId  String          @map("solicitada_por_id") @db.Uuid
+  estado           EstadoEjecucion @default(PENDIENTE)
+  entrada          Json?
+  proveedor        ProveedorIA?
+  modelo           String?
+  error            String?
+  ejecucionPadreId String?         @map("ejecucion_padre_id") @db.Uuid
+  iniciadaEn       DateTime?       @map("iniciada_en")
+  finalizadaEn     DateTime?       @map("finalizada_en")
+  creadoEn         DateTime        @default(now()) @map("creado_en")
+  actualizadoEn    DateTime        @updatedAt @map("actualizado_en")
+
+  empresa       Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  agente        Agente      @relation(fields: [agenteId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  solicitadaPor Usuario     @relation(fields: [solicitadaPorId], references: [id], onDelete: Restrict)
+  padre         Ejecucion?  @relation("Subejecuciones", fields: [ejecucionPadreId], references: [id], onDelete: SetNull)
+  hijas         Ejecucion[] @relation("Subejecuciones")
+  resultados    Resultado[]
+
+  @@unique([id, empresaId])
+  @@index([empresaId, creadoEn])
+  @@map("ia_ejecuciones")
+}
+
+model Resultado {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  empresaId     String   @map("empresa_id") @db.Uuid
+  ejecucionId   String   @map("ejecucion_id") @db.Uuid
+  titulo        String
+  contenido     Json
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  ejecucion  Ejecucion   @relation(fields: [ejecucionId, empresaId], references: [id, empresaId], onDelete: Cascade)
+  aprobacion Aprobacion?
+
+  @@unique([id, empresaId])
+  @@index([empresaId, creadoEn])
+  @@map("ia_resultados")
+}
+
+// Todo resultado requiere decisión humana: la base exige un usuario cuando el estado no es PENDIENTE.
+model Aprobacion {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  empresaId     String           @map("empresa_id") @db.Uuid
+  resultadoId   String           @unique @map("resultado_id") @db.Uuid
+  estado        EstadoAprobacion @default(PENDIENTE)
+  decididaPorId String?          @map("decidida_por_id") @db.Uuid
+  comentario    String?
+  decididaEn    DateTime?        @map("decidida_en")
+  creadoEn      DateTime         @default(now()) @map("creado_en")
+  actualizadoEn DateTime         @updatedAt @map("actualizado_en")
+
+  empresa     Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  resultado   Resultado @relation(fields: [resultadoId, empresaId], references: [id, empresaId], onDelete: Cascade)
+  decididaPor Usuario?  @relation(fields: [decididaPorId], references: [id], onDelete: Restrict)
+
+  @@unique([resultadoId, empresaId])
+  @@index([empresaId, estado])
+  @@map("ia_aprobaciones")
 }

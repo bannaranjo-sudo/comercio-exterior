@@ -1,0 +1,92 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { ErrorAutorizacion, type ContextoAcceso } from "@/lib/auth/autorizacion";
+import { requirePermissionActiva } from "@/lib/auth/sesion";
+import type { CodigoPermiso } from "@/lib/permisos/catalogo";
+import * as servicio from "@/lib/inteligencia/servicio";
+
+export type EstadoAccion = { ok?: string; error?: string };
+
+// Toda acción exige sesión y permiso en la empresa activa (validada en servidor).
+// Ninguna recibe empresaId del cliente ni invoca modelos de IA.
+async function proteger(
+  permiso: CodigoPermiso,
+  mensajeOk: string,
+  operacion: (ctx: ContextoAcceso) => Promise<void>,
+): Promise<EstadoAccion> {
+  try {
+    await operacion(await requirePermissionActiva(permiso));
+    revalidatePath("/inteligencia", "layout");
+    return { ok: mensajeOk };
+  } catch (error) {
+    if (error instanceof servicio.ErrorValidacion) return { error: error.message };
+    if (error instanceof ErrorAutorizacion) return { error: "No tiene permiso para realizar esta acción." };
+    throw error;
+  }
+}
+
+const campo = (formData: FormData, nombre: string): FormDataEntryValue | null => formData.get(nombre);
+
+export async function accionGuardarProveedor(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:configurar", "Configuración guardada.", (ctx) =>
+    servicio.guardarProveedor(ctx, {
+      proveedor: campo(formData, "proveedor"),
+      habilitado: campo(formData, "habilitado") === "on",
+      notas: campo(formData, "notas"),
+    }),
+  );
+}
+
+export async function accionInicializarAgentes(): Promise<EstadoAccion> {
+  return proteger("inteligencia:administrar_agentes", "Agentes predeterminados creados.", (ctx) =>
+    servicio.inicializarAgentesPredeterminados(ctx),
+  );
+}
+
+export async function accionCrearAgente(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:administrar_agentes", "Agente creado.", (ctx) =>
+    servicio.crearAgente(ctx, {
+      codigo: campo(formData, "codigo"),
+      nombre: campo(formData, "nombre"),
+      descripcion: campo(formData, "descripcion"),
+      instrucciones: campo(formData, "instrucciones"),
+    }),
+  );
+}
+
+export async function accionCambiarEstadoAgente(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:administrar_agentes", "Estado actualizado.", (ctx) =>
+    servicio.cambiarEstadoAgente(ctx, campo(formData, "agenteId"), campo(formData, "activo") === "true"),
+  );
+}
+
+export async function accionAsignarModelo(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:administrar_agentes", "Modelo asignado.", (ctx) =>
+    servicio.asignarModelo(ctx, {
+      agenteId: campo(formData, "agenteId"),
+      proveedor: campo(formData, "proveedor"),
+      modelo: campo(formData, "modelo"),
+      prioridad: campo(formData, "prioridad"),
+    }),
+  );
+}
+
+export async function accionSolicitarEjecucion(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:ejecutar", "Solicitud registrada en cola.", (ctx) =>
+    servicio.solicitarEjecucion(ctx, {
+      agenteId: campo(formData, "agenteId"),
+      descripcion: campo(formData, "descripcion"),
+    }),
+  );
+}
+
+export async function accionDecidirAprobacion(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
+  return proteger("inteligencia:aprobar", "Decisión registrada.", (ctx) =>
+    servicio.decidirAprobacion(ctx, {
+      aprobacionId: campo(formData, "aprobacionId"),
+      decision: campo(formData, "decision"),
+      comentario: campo(formData, "comentario"),
+    }),
+  );
+}

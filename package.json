@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "test": "tsx tests/preparar-db.mts && tsx --import ./tests/setup.ts --test --test-concurrency=1 tests/*.test.ts",
-    "auth:crear-admin": "tsx scripts/crear-admin.ts"
+    "auth:crear-admin": "tsx scripts/crear-admin.ts",
+    "db:sincronizar-permisos": "tsx scripts/sincronizar-permisos.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BrainCircuit,
   Boxes,
   Calculator,
   FileText,
@@ -66,6 +67,12 @@ export const modulos: Modulo[] = [
     href: "/reportes",
     descripcion: "Informes operativos, financieros y gerenciales.",
     icono: BarChart3,
+  },
+  {
+    nombre: "Centro de Inteligencia",
+    href: "/inteligencia",
+    descripcion: "Agentes de IA configurables por empresa, análisis, historial y aprobaciones.",
+    icono: BrainCircuit,
   },
   {
     nombre: "Administración",

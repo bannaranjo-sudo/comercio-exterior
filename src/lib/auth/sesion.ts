@@ -22,6 +22,12 @@ export async function requirePermission(
   return autorizar(await headers(), empresaId, permiso);
 }
 
+/** requirePermission sobre la empresa activa (cookie); la membresía y el permiso se revalidan en la base. */
+export async function requirePermissionActiva(permiso: CodigoPermiso): Promise<ContextoAcceso> {
+  const empresaId = (await cookies()).get(EMPRESA_COOKIE)?.value ?? "";
+  return requirePermission(empresaId, permiso);
+}
+
 /** Exige sesión y empresa activa válida; redirige si falta alguna. */
 export async function obtenerContextoUsuario() {
   const sesion = await auth.api.getSession({ headers: await headers() });
