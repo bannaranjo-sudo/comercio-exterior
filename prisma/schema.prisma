@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Empresa: unidad de aislamiento (tenant). Todo dato operativo futuro colgará de empresaId.
+model Empresa {
+  id                   String   @id @default(uuid(7)) @db.Uuid
+  razonSocial          String   @map("razon_social")
+  nombreComercial      String?  @map("nombre_comercial")
+  identificacionFiscal String   @unique @map("identificacion_fiscal")
+  activa               Boolean  @default(true)
+  creadoEn             DateTime @default(now()) @map("creado_en")
+  actualizadoEn        DateTime @updatedAt @map("actualizado_en")
+
+  roles    Rol[]
+  miembros EmpresaUsuario[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  correo        String   @unique
+  nombre        String
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresas EmpresaUsuario[]
+
+  @@map("usuarios")
+}
+
+// Rol: pertenece a una sola empresa (los roles no se comparten entre empresas).
+model Rol {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  empresaId     String   @map("empresa_id") @db.Uuid
+  nombre        String
+  descripcion   String?
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa  Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permisos RolPermiso[]
+  miembros EmpresaUsuario[]
+
+  @@unique([empresaId, nombre])
+  @@unique([id, empresaId]) // habilita FK compuesta para garantizar rol de la misma empresa
+  @@map("roles")
+}
+
+// Permiso: catálogo global (p. ej. "importaciones:leer").
+model Permiso {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  codigo        String   @unique
+  descripcion   String?
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  roles RolPermiso[]
+
+  @@map("permisos")
+}
+
+model RolPermiso {
+  rolId     String   @map("rol_id") @db.Uuid
+  permisoId String   @map("permiso_id") @db.Uuid
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  rol     Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  permiso Permiso @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@id([rolId, permisoId])
+  @@map("roles_permisos")
+}
+
+// Membresía: un usuario puede pertenecer a varias empresas, con un rol por empresa.
+model EmpresaUsuario {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  empresaId     String   @map("empresa_id") @db.Uuid
+  usuarioId     String   @map("usuario_id") @db.Uuid
+  rolId         String   @map("rol_id") @db.Uuid
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  rol     Rol     @relation(fields: [rolId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  @@unique([empresaId, usuarioId])
+  @@index([usuarioId])
+  @@map("empresa_usuarios")
+}
