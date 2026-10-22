@@ -41,7 +41,7 @@
 
 ## Estado actual
 - Fases 1 y 2 completadas; fase 3 (seguimiento básico), fase 4 y fase 5 (costos) cubiertas por el MVP: ver `docs/MVP.md`.
-- Pendiente: contenedores y navieras, versiones de documentos, inventarios, reportes y alertas.
+- Pendiente: contenedores y navieras, versiones de documentos, reportes y alertas.
 
 ## Reglas de ejecución
 - Desarrollar una fase a la vez.

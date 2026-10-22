@@ -8,7 +8,6 @@ import type { Modulo } from "@/config/modulos"
 // Alcance previsto de módulos que todavía no tienen funcionalidades. Es una descripción de lo planificado,
 // no una funcionalidad disponible.
 const ALCANCE_PREVISTO: Record<string, string[]> = {
-  "/inventarios": ["Catálogo de productos", "Bodegas y ubicaciones", "Entradas y salidas ligadas a operaciones", "Existencias y movimientos"],
   "/reportes": ["Informes operativos por periodo", "Informes de costos por operación", "Indicadores gerenciales", "Exportación de resultados"],
 }
 
