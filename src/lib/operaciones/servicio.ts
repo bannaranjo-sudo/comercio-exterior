@@ -218,3 +218,13 @@ export function historialOperacion(ctx: ContextoAcceso, operacionId: string) {
     take: 100,
   });
 }
+
+/** Operaciones recientes para listas desplegables de vinculación (solo de la empresa activa). */
+export function opcionesOperaciones(ctx: ContextoAcceso, limite = 100) {
+  return db.operacion.findMany({
+    where: { empresaId: ctx.empresaId, estado: { not: "CANCELADA" } },
+    select: { id: true, numero: true, tipo: true, tercero: { select: { razonSocial: true } } },
+    orderBy: { consecutivo: "desc" },
+    take: limite,
+  });
+}
