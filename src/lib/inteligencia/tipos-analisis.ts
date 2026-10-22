@@ -1,10 +1,8 @@
 // Catálogo de tipos de análisis del Centro de Inteligencia y su disponibilidad REAL.
 //
-// - "disponible": se puede ejecutar hoy (aquí solo la revisión por reglas, que no usa IA).
+// - "disponible": existe un flujo funcional (revisión por reglas; análisis documental, cuya ejecución depende del modo
+//   del servidor: IA_ANALISIS_MODO, deshabilitado por defecto → las solicitudes quedan en cola).
 // - "proximamente": la solicitud puede registrarse en cola, pero NO se ejecuta ningún análisis.
-
-/** Interruptor único: pasa a true únicamente cuando exista un ejecutor real de análisis con agentes. */
-export const EJECUCION_ANALISIS_DISPONIBLE = false;
 
 export type DisponibilidadAnalisis = "disponible" | "proximamente";
 
@@ -24,9 +22,9 @@ export const TIPOS_ANALISIS: readonly TipoAnalisis[] = [
     id: "documental",
     nombre: "Análisis documental",
     descripcion: "Revisión asistida de facturas, listas de empaque, certificados de origen y documentos de transporte.",
-    requiere: ["Operación con documentos PDF cargados", "Tipo de documento a revisar"],
+    requiere: ["Operación con documentos PDF cargados (con texto seleccionable)", "Selección de los documentos a analizar"],
     agenteCodigo: "documental",
-    disponibilidad: "proximamente",
+    disponibilidad: "disponible",
   },
   {
     id: "arancelario",

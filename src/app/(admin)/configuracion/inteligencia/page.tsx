@@ -42,10 +42,15 @@ export default async function Page() {
     <div className="space-y-6">
       <Seccion titulo="Estado de la integración" descripcion="Niveles independientes: cada uno debe cumplirse por separado.">
         <EstadoCapacidades capacidades={capacidades} />
-        {!capacidades.ejecutorImplementado && (
-          <Alerta tono="warning" className="mt-4" titulo="Ejecución de análisis no disponible">
-            OpenAI está integrado y la conexión puede verificarse, pero el ejecutor de análisis con agentes aún no está implementado. Las solicitudes
-            solo se registran en cola.
+        {capacidades.modo.efectivo === "deshabilitado" && (
+          <Alerta tono="warning" className="mt-4" titulo="Ejecución de análisis deshabilitada">
+            El análisis documental está implementado, pero el servidor mantiene la ejecución deshabilitada: las solicitudes solo se registran en cola y no
+            se consume ningún proveedor. {capacidades.modo.motivo}
+          </Alerta>
+        )}
+        {capacidades.modo.efectivo === "simulado" && (
+          <Alerta tono="info" className="mt-4" titulo="Modo simulado">
+            Los análisis se ejecutan con un proveedor simulado (sin costo ni llamadas externas). Sus resultados son de demostración.
           </Alerta>
         )}
       </Seccion>

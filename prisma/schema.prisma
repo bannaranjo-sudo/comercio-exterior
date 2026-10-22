@@ -211,6 +211,8 @@ enum ProveedorIA {
   OPENAI
   ANTHROPIC
   GOOGLE
+  /// Proveedor simulado (pruebas sin costo): no llama a ningún servicio externo.
+  SIMULADO
 
   @@map("proveedor_ia")
 }
@@ -236,6 +238,8 @@ enum EstadoAprobacion {
   PENDIENTE
   APROBADO
   RECHAZADO
+  /// Devuelto al autor con observaciones para que lo corrija.
+  DEVUELTO
 
   @@map("estado_aprobacion")
 }
@@ -313,20 +317,24 @@ model Ejecucion {
   modelo           String?
   error            String?
   ejecucionPadreId String?         @map("ejecucion_padre_id") @db.Uuid
+  /// Huella del análisis (operación + documentos + versión): impide duplicados activos.
+  huella           String?
   iniciadaEn       DateTime?       @map("iniciada_en")
   finalizadaEn     DateTime?       @map("finalizada_en")
   creadoEn         DateTime        @default(now()) @map("creado_en")
   actualizadoEn    DateTime        @updatedAt @map("actualizado_en")
 
-  empresa       Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  agente        Agente      @relation(fields: [agenteId, empresaId], references: [id, empresaId], onDelete: Restrict)
-  solicitadaPor Usuario     @relation(fields: [solicitadaPorId], references: [id], onDelete: Restrict)
-  padre         Ejecucion?  @relation("Subejecuciones", fields: [ejecucionPadreId], references: [id], onDelete: SetNull)
-  hijas         Ejecucion[] @relation("Subejecuciones")
+  empresa       Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  agente        Agente        @relation(fields: [agenteId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  solicitadaPor Usuario       @relation(fields: [solicitadaPorId], references: [id], onDelete: Restrict)
+  padre         Ejecucion?    @relation("Subejecuciones", fields: [ejecucionPadreId], references: [id], onDelete: SetNull)
+  hijas         Ejecucion[]   @relation("Subejecuciones")
   resultados    Resultado[]
+  usos          RegistroUso[]
 
   @@unique([id, empresaId])
   @@index([empresaId, creadoEn])
+  @@index([empresaId, huella])
   @@map("ia_ejecuciones")
 }
 
@@ -402,11 +410,15 @@ model RegistroUso {
   tokensRazonamiento Int?        @map("tokens_razonamiento")
   caracteresSalida   Int?        @map("caracteres_salida")
   motivoFin          String?     @map("motivo_fin")
+  ejecucionId        String?     @map("ejecucion_id") @db.Uuid
+  /// Hash de la autorización de un solo uso con la que se permitió una ejecución real.
+  autorizacionHash   String?     @unique @map("autorizacion_hash")
   creadoEn           DateTime    @default(now()) @map("creado_en")
   actualizadoEn      DateTime    @updatedAt @map("actualizado_en")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  ejecucion Ejecucion? @relation(fields: [ejecucionId], references: [id], onDelete: SetNull)
 
   @@index([empresaId, tipo, creadoEn])
   @@map("ia_uso")

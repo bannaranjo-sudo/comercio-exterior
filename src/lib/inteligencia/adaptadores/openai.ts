@@ -2,7 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { iaRealPermitida } from "@/lib/despliegue/entorno";
 import { ErrorProveedorIA, traducirError } from "@/lib/inteligencia/errores";
-import { LIMITES, limitarTokensSalida } from "@/lib/inteligencia/limites";
+import { limitarTiempo, limitarTokensSalida } from "@/lib/inteligencia/limites";
 import type { AdaptadorProveedor, RespuestaGeneracion, SolicitudGeneracion } from "@/lib/inteligencia/proveedores";
 
 type ResultadoSDK = {
@@ -42,9 +42,9 @@ export const adaptadorOpenAI: AdaptadorProveedor = {
         system: solicitud.sistema,
         messages: solicitud.mensajes.map((m) => ({ role: m.rol, content: m.contenido })),
         ...(solicitud.temperatura === undefined ? {} : { temperature: solicitud.temperatura }),
-        maxOutputTokens: limitarTokensSalida(solicitud.maximoTokens),
+        maxOutputTokens: limitarTokensSalida(solicitud.maximoTokens, solicitud.topeTokens),
         maxRetries: 0,
-        abortSignal: AbortSignal.timeout(LIMITES.tiempoMaxMs),
+        abortSignal: AbortSignal.timeout(limitarTiempo(solicitud.tiempoMaxMs)),
       });
       return normalizarRespuesta(resultado);
     } catch (error) {

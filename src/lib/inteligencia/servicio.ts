@@ -216,12 +216,15 @@ export async function decidirAprobacion(
   ctx: ContextoAcceso,
   datos: { aprobacionId: unknown; decision: unknown; comentario: unknown },
 ) {
-  if (datos.decision !== "APROBADO" && datos.decision !== "RECHAZADO") {
+  if (datos.decision !== "APROBADO" && datos.decision !== "RECHAZADO" && datos.decision !== "DEVUELTO") {
     throw new ErrorValidacion("Decisión no válida.");
   }
   const id = typeof datos.aprobacionId === "string" ? datos.aprobacionId : "";
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ErrorValidacion("Aprobación no encontrada.");
   const comentario = typeof datos.comentario === "string" ? datos.comentario.trim().slice(0, 500) || null : null;
+  if (datos.decision === "DEVUELTO" && (comentario?.length ?? 0) < 5) {
+    throw new ErrorValidacion("Indique las observaciones para devolver el análisis (mínimo 5 caracteres).");
+  }
   const { count } = await db.aprobacion.updateMany({
     where: { id, empresaId: ctx.empresaId, estado: "PENDIENTE" },
     data: { estado: datos.decision, decididaPorId: ctx.usuarioId, decididaEn: new Date(), comentario },

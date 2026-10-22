@@ -57,10 +57,12 @@ export function filasCapacidades(c: Capacidades): Fila[] {
       titulo: "Análisis ejecutable",
       nivel: c.analisisEjecutable ? "ok" : "no",
       detalle: c.analisisEjecutable
-        ? "La ejecución de análisis está disponible."
-        : c.ejecutorImplementado
-          ? "Falta completar la cadena anterior."
-          : "No disponible: el ejecutor de análisis aún no está implementado. Solo se registran solicitudes.",
+        ? c.modo.efectivo === "simulado"
+          ? "Disponible con proveedor SIMULADO (pruebas, sin costo)."
+          : "La ejecución de análisis está disponible."
+        : c.modo.efectivo === "deshabilitado"
+          ? `Ejecución deshabilitada en el servidor: las solicitudes quedan en cola. ${c.modo.motivo}`
+          : "Falta completar la cadena anterior.",
     },
   ]
 }

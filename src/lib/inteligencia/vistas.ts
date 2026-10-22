@@ -3,7 +3,8 @@ import type { ContextoAcceso } from "@/lib/auth/autorizacion";
 import { db } from "@/lib/db";
 import { PROVEEDORES_IMPLEMENTADOS } from "@/lib/inteligencia/proveedores";
 import { estadoIntegracion, listarProveedores, ultimaPrueba } from "@/lib/inteligencia/servicio";
-import { EJECUCION_ANALISIS_DISPONIBLE } from "@/lib/inteligencia/tipos-analisis";
+import { recuperarInterrumpidas } from "@/lib/inteligencia/documental/analisis";
+import { estadoModo } from "@/lib/inteligencia/documental/modo";
 
 // Consultas de las vistas operativas del Centro de Inteligencia: solicitudes, resultados por revisar,
 // historial y estado real de capacidades. Todo filtra por la empresa del contexto autorizado.
@@ -20,6 +21,7 @@ const operacionIdDeEntrada = (entrada: unknown): string | undefined => {
 
 /** Solicitudes de la empresa activa con su operación asociada (si existe), solicitante y agente. */
 export async function listarSolicitudes(ctx: ContextoAcceso, filtros: FiltrosSolicitudes = {}) {
+  await recuperarInterrumpidas(ctx);
   const pagina = Math.max(1, filtros.pagina ?? 1);
   const estado = ESTADOS.find((e) => e === filtros.estado);
   const filas = await db.ejecucion.findMany({
@@ -58,6 +60,7 @@ export async function listarSolicitudes(ctx: ContextoAcceso, filtros: FiltrosSol
 
 export async function obtenerSolicitud(ctx: ContextoAcceso, id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  await recuperarInterrumpidas(ctx);
   const solicitud = await db.ejecucion.findFirst({
     where: { id, empresaId: ctx.empresaId },
     include: {
@@ -149,14 +152,33 @@ export async function estadoCapacidades(ctx: ContextoAcceso) {
   }
   const activos = agentes.filter((a) => a.activo);
   const conModelo = activos.filter((a) => asignaciones.some((x) => x.agenteId === a.id));
+  const modo = estadoModo();
   const cadenaLista = porProveedor.some((p) => p.habilitado && p.adaptadorDisponible && p.credencialConfigurada && p.conexionVerificada);
   return {
     proveedores: porProveedor,
     agentes: { total: agentes.length, activos: activos.length, conModelo: conModelo.length },
     agentePorCodigo: new Map(activos.map((a) => [a.codigo, a.id])),
     pruebaRealAutorizada: integracion.pruebaRealAutorizada,
-    ejecutorImplementado: EJECUCION_ANALISIS_DISPONIBLE,
+    ejecutorImplementado: true,
+    modo,
     /** Solo es true cuando existe un ejecutor real y toda la cadena (proveedor, credencial, conexión, agente) está lista. */
-    analisisEjecutable: EJECUCION_ANALISIS_DISPONIBLE && cadenaLista && conModelo.length > 0,
+    analisisEjecutable:
+      modo.efectivo === "simulado" ? activos.some((a) => a.codigo === "documental") : modo.efectivo === "real" ? cadenaLista && conModelo.length > 0 : false,
   };
+}
+
+/** Análisis documentales de una operación de la empresa (pestaña Inteligencia del expediente). */
+export async function listarAnalisisDeOperacion(ctx: ContextoAcceso, operacionId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(operacionId)) return [];
+  await recuperarInterrumpidas(ctx);
+  return db.ejecucion.findMany({
+    where: { empresaId: ctx.empresaId, entrada: { path: ["operacionId"], equals: operacionId } },
+    include: {
+      agente: { select: { nombre: true } },
+      solicitadaPor: { select: { nombre: true } },
+      resultados: { select: { id: true, aprobacion: { select: { estado: true } } } },
+    },
+    orderBy: { creadoEn: "desc" },
+    take: 20,
+  });
 }

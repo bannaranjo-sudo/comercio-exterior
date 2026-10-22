@@ -20,12 +20,16 @@ type Props = {
   /** El agente que atiende este tipo existe y está activo (solo aplica a análisis con IA). */
   agenteConfigurado: boolean
   puedeConfigurarAgentes: boolean
+  /** Modo efectivo de ejecución del servidor (solo relevante para los análisis con IA). */
+  modoEjecucion?: "deshabilitado" | "simulado" | "real"
 }
 
 /** Tarjeta de un tipo de análisis con su disponibilidad real. */
-export function TarjetaAnalisis({ tipo, puedeSolicitar, agenteConfigurado, puedeConfigurarAgentes }: Props) {
+export function TarjetaAnalisis({ tipo, puedeSolicitar, agenteConfigurado, puedeConfigurarAgentes, modoEjecucion = "deshabilitado" }: Props) {
   const { icono: Icono, clase } = ICONO[tipo.id]
   const disponible = tipo.disponibilidad === "disponible"
+  // Con IA, "disponible" solo significa que existe el flujo; si el servidor tiene la ejecución apagada, solo se registra en cola.
+  const soloCola = disponible && Boolean(tipo.agenteCodigo) && modoEjecucion === "deshabilitado"
   return (
     <Card className="h-full">
       <CardContent className="flex h-full flex-col gap-3">
@@ -36,8 +40,10 @@ export function TarjetaAnalisis({ tipo, puedeSolicitar, agenteConfigurado, puede
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold">{tipo.nombre}</h3>
-              {disponible ? (
-                <Badge className="bg-success-soft text-success-foreground">Disponible</Badge>
+              {soloCola ? (
+                <Badge variant="outline" className="border-warning/50 text-warning-foreground">Ejecución deshabilitada · solo en cola</Badge>
+              ) : disponible ? (
+                <Badge className="bg-success-soft text-success-foreground">{tipo.agenteCodigo && modoEjecucion === "simulado" ? "Disponible (simulado)" : "Disponible"}</Badge>
               ) : (
                 <Badge variant="outline" className="border-warning/50 text-warning-foreground">Próximamente</Badge>
               )}
@@ -55,6 +61,11 @@ export function TarjetaAnalisis({ tipo, puedeSolicitar, agenteConfigurado, puede
           </ul>
         </div>
 
+        {soloCola && (
+          <p className="rounded-md bg-muted/60 px-2.5 py-2 text-xs text-muted-foreground">
+            El flujo está listo, pero el servidor mantiene la ejecución deshabilitada: la solicitud se registra en cola y no se ejecuta ningún análisis.
+          </p>
+        )}
         {!disponible && (
           <p className="rounded-md bg-muted/60 px-2.5 py-2 text-xs text-muted-foreground">
             {agenteConfigurado
@@ -66,7 +77,7 @@ export function TarjetaAnalisis({ tipo, puedeSolicitar, agenteConfigurado, puede
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
           {disponible ? (
             puedeSolicitar ? (
-              <EnlaceBoton href={`/inteligencia/nuevo/${tipo.id}`}>Iniciar análisis</EnlaceBoton>
+              <EnlaceBoton href={`/inteligencia/nuevo/${tipo.id}`}>{soloCola ? "Registrar solicitud" : "Iniciar análisis"}</EnlaceBoton>
             ) : (
               <Button disabled>Iniciar análisis</Button>
             )

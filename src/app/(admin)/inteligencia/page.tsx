@@ -60,6 +60,7 @@ export default async function Page() {
               puedeSolicitar={puedeSolicitar}
               agenteConfigurado={Boolean(tipo.agenteCodigo && capacidades.agentePorCodigo.has(tipo.agenteCodigo))}
               puedeConfigurarAgentes={ctx.permisos.has("inteligencia:administrar_agentes")}
+              modoEjecucion={capacidades.modo.efectivo}
             />
           ))}
         </div>
@@ -116,7 +117,7 @@ export default async function Page() {
         </Seccion>
       </div>
 
-      <Seccion titulo="Cómo funcionará el flujo de análisis" descripcion="Los pasos marcados como Próximamente todavía no están habilitados.">
+      <Seccion titulo="Cómo funcionará el flujo de análisis" descripcion="Los pasos marcados como Próximamente no están habilitados en este entorno.">
         <PasosAnalisis pasos={pasosFlujo({ actual: 1, ejecucionDisponible: capacidades.analisisEjecutable })} />
       </Seccion>
     </div>

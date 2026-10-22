@@ -7,7 +7,7 @@ import { db } from "../src/lib/db";
 import { ErrorValidacion } from "../src/lib/errores";
 import { revisarExpediente } from "../src/lib/inteligencia/expediente";
 import * as servicio from "../src/lib/inteligencia/servicio";
-import { EJECUCION_ANALISIS_DISPONIBLE, TIPOS_ANALISIS, tipoAnalisis } from "../src/lib/inteligencia/tipos-analisis";
+import { TIPOS_ANALISIS, tipoAnalisis } from "../src/lib/inteligencia/tipos-analisis";
 import * as vistas from "../src/lib/inteligencia/vistas";
 import * as operaciones from "../src/lib/operaciones/servicio";
 import * as terceros from "../src/lib/terceros/servicio";
@@ -130,12 +130,13 @@ describe("Centro de Inteligencia · vistas operativas", () => {
       c = await vistas.estadoCapacidades(alfa);
       assert.equal(c.proveedores.find((p) => p.proveedor === "OPENAI")!.conexionVerificada?.modelo, "gpt-5-mini");
 
-      // Con toda la cadena lista, el análisis sigue sin ser ejecutable porque no existe ejecutor.
+      // Con toda la cadena lista, el análisis sigue sin ser ejecutable mientras el servidor mantenga la ejecución deshabilitada.
       const [doc] = (await servicio.listarAgentes(alfa)).filter((a) => a.codigo === "documental");
       await servicio.asignarModelo(alfa, { agenteId: doc.id, proveedor: "OPENAI", modelo: "gpt-5-mini", prioridad: 1 });
       c = await vistas.estadoCapacidades(alfa);
       assert.deepEqual([c.agentes.activos, c.agentes.conModelo, c.agentePorCodigo.has("documental")], [4, 1, true]);
-      assert.equal(c.ejecutorImplementado, EJECUCION_ANALISIS_DISPONIBLE);
+      assert.equal(c.ejecutorImplementado, true);
+      assert.equal(c.modo.efectivo, "deshabilitado"); // por defecto la ejecución está apagada
       assert.equal(c.analisisEjecutable, false);
 
       // Otra empresa no hereda nada.
@@ -148,9 +149,8 @@ describe("Centro de Inteligencia · vistas operativas", () => {
   });
 
   it("declara honestamente qué análisis están disponibles", () => {
-    assert.equal(EJECUCION_ANALISIS_DISPONIBLE, false);
-    assert.deepEqual(TIPOS_ANALISIS.filter((t) => t.disponibilidad === "disponible").map((t) => t.id), ["expediente"]);
-    assert.deepEqual(TIPOS_ANALISIS.filter((t) => t.disponibilidad === "proximamente").map((t) => t.id).sort(), ["arancelario", "documental", "financiero"]);
+    assert.deepEqual(TIPOS_ANALISIS.filter((t) => t.disponibilidad === "disponible").map((t) => t.id).sort(), ["documental", "expediente"]);
+    assert.deepEqual(TIPOS_ANALISIS.filter((t) => t.disponibilidad === "proximamente").map((t) => t.id).sort(), ["arancelario", "financiero"]);
     assert.equal(tipoAnalisis("inventado"), undefined);
   });
 

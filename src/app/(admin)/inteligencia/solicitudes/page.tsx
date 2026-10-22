@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { exigirPermisoEmpresaActiva } from "@/lib/auth/sesion"
 import { formatearFechaHora } from "@/lib/formato"
-import { ETIQUETA_ESTADO_SOLICITUD } from "@/lib/inteligencia/etiquetas"
+import { ETIQUETA_ESTADO_SOLICITUD, ETIQUETA_REVISION, estadoRevision } from "@/lib/inteligencia/etiquetas"
 import { listarSolicitudes } from "@/lib/inteligencia/vistas"
 
 export const metadata = { title: "Solicitudes · Centro de Inteligencia" }
@@ -76,6 +76,7 @@ export default async function Page({ searchParams }: Props) {
                   <TableHead>Operación</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Revisión</TableHead>
                   <TableHead className="hidden md:table-cell">Responsable</TableHead>
                   <TableHead className="text-right">Detalle</TableHead>
                 </TableRow>
@@ -97,6 +98,7 @@ export default async function Page({ searchParams }: Props) {
                     <TableCell>
                       <InsigniaEstado valor={s.estado} etiqueta={ETIQUETA_ESTADO_SOLICITUD[s.estado]} />
                     </TableCell>
+                    <TableCell className="text-xs">{(() => { const r = estadoRevision(s); return r ? ETIQUETA_REVISION[r] : <span className="text-muted-foreground">—</span> })()}</TableCell>
                     <TableCell className="hidden md:table-cell">{s.solicitadaPor.nombre}</TableCell>
                     <TableCell className="text-right">
                       <Link href={`/inteligencia/solicitudes/${s.id}`} className="text-sm text-primary hover:underline">
