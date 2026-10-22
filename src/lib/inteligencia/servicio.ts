@@ -6,6 +6,7 @@ import { LIMITES } from "@/lib/inteligencia/limites";
 import { modelosPermitidos } from "@/lib/inteligencia/modelos";
 import { esProveedor, LISTA_PROVEEDORES, obtenerAdaptador } from "@/lib/inteligencia/proveedores";
 import type { ProveedorIA } from "@/generated/prisma/enums";
+import { iaRealPermitida } from "@/lib/despliegue/entorno";
 
 // Lógica de negocio del Centro de Inteligencia.
 // Cada función recibe un ContextoAcceso ya autorizado (requirePermission/autorizar) y
@@ -256,7 +257,7 @@ export const pruebaRealAutorizada = (): boolean => process.env.IA_PRUEBA_REAL_AU
 
 export function estadoIntegracion() {
   return {
-    claveOpenAIConfigurada: Boolean(process.env.OPENAI_API_KEY),
+    claveOpenAIConfigurada: iaRealPermitida(process.env),
     pruebaRealAutorizada: pruebaRealAutorizada(),
     modelosOpenAI: modelosPermitidos("OPENAI") ?? [],
   };

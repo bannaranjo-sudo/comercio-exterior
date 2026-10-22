@@ -2,9 +2,10 @@
 
 import { proteger, type EstadoAccion } from "@/lib/acciones";
 import * as servicio from "@/lib/administracion/servicio";
+import { configuracionOrigen } from "@/lib/despliegue/entorno";
 import { datosFormulario } from "@/lib/validacion";
 
-const urlActivacion = (token: string) => `${process.env.BETTER_AUTH_URL ?? "http://localhost:3000"}/activar/${token}`;
+const urlActivacion = (token: string) => `${configuracionOrigen(process.env).baseURL}/activar/${token}`;
 
 const mensajeInvitacion = (r: servicio.ResultadoInvitacion) =>
   r.tipo === "asociado"

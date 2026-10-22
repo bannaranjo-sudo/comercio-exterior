@@ -2,14 +2,17 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "@/lib/db";
+import { configuracionOrigen, validarSecreto } from "@/lib/despliegue/entorno";
 
-const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+// En despliegues remotos exige https, secreto fuerte y un único origen confiable (ver docs/DESPLIEGUE_QA.md).
+validarSecreto(process.env);
+const { baseURL, origenesConfiables, cookiesSeguras } = configuracionOrigen(process.env);
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
-  trustedOrigins: [baseURL],
+  trustedOrigins: origenesConfiables,
   telemetry: { enabled: false },
   // Sin registro público: los usuarios se crean únicamente con el procedimiento administrativo.
   emailAndPassword: {
@@ -31,7 +34,7 @@ export const auth = betterAuth({
   session: { expiresIn: 60 * 60 * 8, updateAge: 60 * 30 },
   advanced: {
     database: { generateId: "uuid" },
-    useSecureCookies: process.env.NODE_ENV === "production",
+    useSecureCookies: cookiesSeguras,
   },
   rateLimit: { enabled: true },
   databaseHooks: {

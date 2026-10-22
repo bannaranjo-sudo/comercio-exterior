@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { iaRealPermitida } from "@/lib/despliegue/entorno";
 import { ErrorProveedorIA, traducirError } from "@/lib/inteligencia/errores";
 import { LIMITES, limitarTokensSalida } from "@/lib/inteligencia/limites";
 import type { AdaptadorProveedor, RespuestaGeneracion, SolicitudGeneracion } from "@/lib/inteligencia/proveedores";
@@ -32,7 +33,8 @@ export const adaptadorOpenAI: AdaptadorProveedor = {
 
   async generar(solicitud: SolicitudGeneracion): Promise<RespuestaGeneracion> {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new ErrorProveedorIA("NO_CONFIGURADO");
+    // En QA solo se llama a OpenAI con IA_QA_HABILITADA=true además de la clave (ver docs/DESPLIEGUE_QA.md).
+    if (!apiKey || !iaRealPermitida(process.env)) throw new ErrorProveedorIA("NO_CONFIGURADO");
 
     try {
       const resultado = await generateText({

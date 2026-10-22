@@ -10,7 +10,16 @@ import { listaFormulario, parsear, textoOpcional, uuid, z } from "@/lib/validaci
 // Gestión documental. Los archivos se guardan en almacenamiento privado (nunca en /public) con claves
 // generadas por el sistema; solo se entregan mediante una ruta autenticada y autorizada.
 
-export const MAX_BYTES_DOCUMENTO = 10 * 1024 * 1024;
+/**
+ * Máximo por PDF. 10 MB por defecto; en Vercel el cuerpo de una solicitud admite ~4,5 MB, por lo que allí el límite es 4 MB.
+ * Ajustable con DOCUMENTOS_MAX_MB (entre 1 y 10).
+ */
+export function maxMbDocumento(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.DOCUMENTOS_MAX_MB);
+  if (Number.isFinite(n) && n >= 1 && n <= 10) return Math.floor(n);
+  return env.VERCEL ? 4 : 10;
+}
+export const MAX_BYTES_DOCUMENTO = maxMbDocumento() * 1024 * 1024;
 export const TAMANO_PAGINA = 20;
 
 /** Documentos exigidos por defecto cuando la empresa no ha configurado su lista. */
@@ -22,7 +31,7 @@ export const REQUISITOS_PREDETERMINADOS: Record<TipoOperacion, readonly TipoDocu
 /** Validación real del archivo: extensión, tamaño, firma %PDF- y marca %%EOF. */
 export function validarPdf(nombre: string, contenido: Buffer): void {
   if (contenido.length === 0) throw new ErrorValidacion("El archivo está vacío.");
-  if (contenido.length > MAX_BYTES_DOCUMENTO) throw new ErrorValidacion("El archivo supera el máximo de 10 MB.");
+  if (contenido.length > MAX_BYTES_DOCUMENTO) throw new ErrorValidacion(`El archivo supera el máximo de ${maxMbDocumento()} MB.`);
   if (!/\.pdf$/i.test(nombre)) throw new ErrorValidacion("Solo se admiten archivos PDF (extensión .pdf).");
   if (contenido.subarray(0, 5).toString("latin1") !== "%PDF-") throw new ErrorValidacion("El archivo no es un PDF válido.");
   if (!contenido.subarray(-2048).toString("latin1").includes("%%EOF")) {
@@ -48,7 +57,7 @@ async function operacionDeEmpresa(tx: Prisma.TransactionClient | typeof db, ctx:
 export async function subirDocumento(ctx: ContextoAcceso, datos: unknown, archivo: unknown) {
   const d = parsear(esquemaCarga, datos);
   if (!(archivo instanceof File) || archivo.size === 0) throw new ErrorValidacion("Seleccione un archivo PDF.");
-  if (archivo.size > MAX_BYTES_DOCUMENTO) throw new ErrorValidacion("El archivo supera el máximo de 10 MB.");
+  if (archivo.size > MAX_BYTES_DOCUMENTO) throw new ErrorValidacion(`El archivo supera el máximo de ${maxMbDocumento()} MB.`);
   const nombre = nombreSeguro(archivo.name);
   const contenido = Buffer.from(await archivo.arrayBuffer());
   validarPdf(nombre, contenido);

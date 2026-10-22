@@ -19,6 +19,7 @@ model Empresa {
 
   roles    Rol[]
   miembros EmpresaUsuario[]
+  archivos ArchivoAlmacenado[]
 
   iaProveedores  ConfiguracionProveedor[]
   iaAgentes      Agente[]
@@ -983,4 +984,19 @@ model MovimientoInventario {
   @@index([productoId, bodegaId, creadoEn])
   @@index([grupoId])
   @@map("movimientos_inventario")
+}
+
+// Archivos privados cuando el almacenamiento es "postgres" (despliegues sin disco persistente, p. ej. Vercel).
+// La clave es la misma que usa el almacenamiento local (<empresa>/<operación>/<archivo>.pdf); el contenido nunca se expone por URL pública.
+model ArchivoAlmacenado {
+  clave       String   @id
+  empresaId   String   @map("empresa_id") @db.Uuid
+  contenido   Bytes
+  tamanoBytes Int      @map("tamano_bytes")
+  creadoEn    DateTime @default(now()) @map("creado_en")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@map("archivos_almacenados")
 }

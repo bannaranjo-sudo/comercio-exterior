@@ -3,8 +3,12 @@ import "dotenv/config";
 // Datos ficticios de demostración (identificados como DEMO). OPCIONAL y NUNCA automático.
 // Solo opera sobre una base cuyo nombre termine en _demo o _test (DEMO_DATABASE_URL o TEST_DATABASE_URL);
 // jamás sobre la base de desarrollo/producción. Requiere que la empresa DEMO-0001 ya exista (seed de pruebas).
-const url = process.env.DEMO_DATABASE_URL ?? process.env.TEST_DATABASE_URL;
-if (!url || !/_(demo|test)$/.test(new URL(url).pathname)) {
+// Excepción QA: scripts/qa-inicializar.mts lo invoca con QA_DATOS_DEMO_AUTORIZADOS=si sobre la empresa ficticia QA-0001
+// de la base gestionada de QA (esa misma ruta ya validó que la base es remota y confirmada).
+const NIT = process.env.DEMO_EMPRESA_NIT ?? "DEMO-0001";
+const autorizadoQa = process.env.QA_DATOS_DEMO_AUTORIZADOS === "si" && NIT.startsWith("QA-");
+const url = autorizadoQa ? process.env.DATABASE_URL : (process.env.DEMO_DATABASE_URL ?? process.env.TEST_DATABASE_URL);
+if (!url || (!autorizadoQa && !/_(demo|test)$/.test(new URL(url).pathname))) {
   throw new Error("Defina DEMO_DATABASE_URL o TEST_DATABASE_URL apuntando a una base cuyo nombre termine en _demo o _test.");
 }
 process.env.DATABASE_URL = url;
@@ -17,13 +21,13 @@ const operaciones = await import("../src/lib/operaciones/servicio");
 const terceros = await import("../src/lib/terceros/servicio");
 const { CATALOGO_PERMISOS } = await import("../src/lib/permisos/catalogo");
 
-const empresa = await db.empresa.findUnique({ where: { identificacionFiscal: "DEMO-0001" } });
-if (!empresa) throw new Error("No existe la empresa DEMO-0001 en la base de demostración.");
+const empresa = await db.empresa.findUnique({ where: { identificacionFiscal: NIT } });
+if (!empresa) throw new Error(`No existe la empresa ${NIT} en la base de demostración.`);
 const admin = await db.empresaUsuario.findFirst({
   where: { empresaId: empresa.id, activo: true, rol: { nombre: "Administrador" } },
   include: { rol: true },
 });
-if (!admin) throw new Error("No hay un administrador activo en DEMO-0001.");
+if (!admin) throw new Error(`No hay un administrador activo en ${NIT}.`);
 const ctx = {
   usuarioId: admin.usuarioId, empresaId: empresa.id, rolId: admin.rolId, rolNombre: admin.rol.nombre,
   permisos: new Set(CATALOGO_PERMISOS.map((p) => p.codigo)),
@@ -75,5 +79,5 @@ const pdf = (texto: string) => new File([`%PDF-1.4\n1 0 obj<</Type/Catalog>>endo
 await documentos.subirDocumento(ctx, { operacionId: op1.id, tipo: "FACTURA_COMERCIAL" }, pdf("Factura DEMO 001"));
 await documentos.subirDocumento(ctx, { operacionId: op1.id, tipo: "LISTA_EMPAQUE" }, pdf("Lista de empaque DEMO 001"));
 
-console.log("Datos de demostración creados en la empresa DEMO-0001 (base de demostración/pruebas).");
+console.log(`Datos de demostración creados en la empresa ${NIT} (ficticios).`);
 await db.$disconnect();
