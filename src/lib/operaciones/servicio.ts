@@ -128,9 +128,9 @@ export async function listarResponsables(ctx: ContextoAcceso) {
 }
 
 /** Siguiente consecutivo de la empresa, atómico y sin huecos dentro de la transacción. */
-async function siguienteConsecutivo(tx: Prisma.TransactionClient, empresaId: string): Promise<number> {
+export async function siguienteConsecutivo(tx: Prisma.TransactionClient, empresaId: string, nombre = "operaciones"): Promise<number> {
   const [fila] = await tx.$queryRaw<{ ultimo: number }[]>`
-    INSERT INTO contadores (empresa_id, nombre, ultimo) VALUES (${empresaId}::uuid, 'operaciones', 1)
+    INSERT INTO contadores (empresa_id, nombre, ultimo) VALUES (${empresaId}::uuid, ${nombre}, 1)
     ON CONFLICT (empresa_id, nombre) DO UPDATE SET ultimo = contadores.ultimo + 1
     RETURNING ultimo`;
   return fila.ultimo;

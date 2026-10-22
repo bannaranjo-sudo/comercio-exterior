@@ -19,6 +19,16 @@ type DefinicionUsuario = { alias: string; empresa: "DEMO-0001" | "DEMO-0002"; ro
 
 /** Borra los datos del MVP (solo base de pruebas), respetando el orden de dependencias. */
 export async function limpiarDatosMvp(): Promise<void> {
+  // Los movimientos de inventario son inmutables (trigger); solo en la base de pruebas se omite con el rol de replicación.
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+    await tx.movimientoInventario.deleteMany();
+    await tx.recepcionLinea.deleteMany();
+    await tx.recepcion.deleteMany();
+    await tx.existenciaInventario.deleteMany();
+    await tx.producto.deleteMany();
+    await tx.bodega.deleteMany();
+  });
   await db.invitacion.deleteMany();
   await db.costo.deleteMany();
   await db.eventoLogistico.deleteMany();

@@ -39,6 +39,13 @@ model Empresa {
   contadores             ContadorConsecutivo[]
   invitaciones           Invitacion[]
 
+  productos             Producto[]
+  bodegas               Bodega[]
+  existenciasInventario ExistenciaInventario[]
+  recepciones           Recepcion[]
+  recepcionesLineas     RecepcionLinea[]
+  movimientosInventario MovimientoInventario[]
+
   @@map("empresas")
 }
 
@@ -68,6 +75,12 @@ model Usuario {
   costosRegistrados     Costo[]              @relation("CostoAutor")
   invitacionesRecibidas Invitacion[]         @relation("InvitacionUsuario")
   invitacionesCreadas   Invitacion[]         @relation("InvitacionAutor")
+
+  productosCreados       Producto[]             @relation("ProductoCreador")
+  bodegasCreadas         Bodega[]               @relation("BodegaCreador")
+  bodegasResponsable     Bodega[]               @relation("BodegaResponsable")
+  recepcionesRegistradas Recepcion[]            @relation("RecepcionAutor")
+  movimientosRegistrados MovimientoInventario[] @relation("MovimientoAutor")
 
   @@map("usuarios")
 }
@@ -558,6 +571,8 @@ model Tercero {
   operaciones Operacion[]
   envios      Envio[]
 
+  productos Producto[]
+
   @@unique([empresaId, identificacionFiscal])
   @@unique([id, empresaId])
   @@index([empresaId, activo])
@@ -608,6 +623,9 @@ model Operacion {
   eventos     EventoLogistico[]
   costos      Costo[]
 
+  recepciones           Recepcion[]
+  movimientosInventario MovimientoInventario[]
+
   @@unique([empresaId, consecutivo])
   @@unique([empresaId, numero])
   @@unique([id, empresaId])
@@ -652,6 +670,8 @@ model Documento {
   empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   operacion Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Restrict)
   subidoPor Usuario   @relation("DocumentoAutor", fields: [subidoPorId], references: [id], onDelete: Restrict)
+
+  recepciones Recepcion[]
 
   @@index([empresaId, estado])
   @@index([operacionId, tipo])
@@ -764,4 +784,203 @@ model Invitacion {
 
   @@index([usuarioId])
   @@map("invitaciones")
+}
+
+// ---------------------------------------------------------------------------
+// Inventarios. Existencias separadas por empresa, producto y bodega. Los saldos son decimales exactos
+// (NUMERIC) y nunca pueden ser negativos (CHECK). Los movimientos son inmutables: las correcciones se
+// hacen con movimientos compensatorios. Relaciones obligatorias con claves compuestas (id, empresa_id);
+// las opcionales se refuerzan con triggers.
+// ---------------------------------------------------------------------------
+
+enum UnidadMedida {
+  UNIDAD
+  KILOGRAMO
+  GRAMO
+  LITRO
+  METRO
+  METRO_CUADRADO
+  METRO_CUBICO
+  CAJA
+  PAR
+
+  @@map("unidad_medida")
+}
+
+enum TipoMovimiento {
+  RECEPCION
+  ENTRADA
+  SALIDA
+  TRANSFERENCIA
+  AJUSTE
+  COMPENSACION
+
+  @@map("tipo_movimiento")
+}
+
+enum SentidoMovimiento {
+  ENTRADA
+  SALIDA
+
+  @@map("sentido_movimiento")
+}
+
+model Producto {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  empresaId         String       @map("empresa_id") @db.Uuid
+  sku               String
+  nombre            String
+  descripcion       String?
+  categoria         String?
+  unidad            UnidadMedida @default(UNIDAD)
+  paisOrigen        String?      @map("pais_origen")
+  /// Dato informativo sujeto a validación aduanera; el sistema no lo verifica.
+  codigoArancelario String?      @map("codigo_arancelario")
+  proveedorId       String?      @map("proveedor_id") @db.Uuid
+  stockMinimo       Decimal      @default(0) @map("stock_minimo") @db.Decimal(18, 4)
+  activo            Boolean      @default(true)
+  creadoPorId       String       @map("creado_por_id") @db.Uuid
+  creadoEn          DateTime     @default(now()) @map("creado_en")
+  actualizadoEn     DateTime     @updatedAt @map("actualizado_en")
+
+  empresa     Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  proveedor   Tercero?               @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  creadoPor   Usuario                @relation("ProductoCreador", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  existencias ExistenciaInventario[]
+  movimientos MovimientoInventario[]
+  lineas      RecepcionLinea[]
+
+  @@unique([empresaId, sku])
+  @@unique([id, empresaId])
+  @@index([empresaId, activo])
+  @@map("productos")
+}
+
+model Bodega {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  empresaId     String   @map("empresa_id") @db.Uuid
+  codigo        String
+  nombre        String
+  direccion     String?
+  ciudad        String?
+  responsableId String?  @map("responsable_id") @db.Uuid
+  activo        Boolean  @default(true)
+  creadoPorId   String   @map("creado_por_id") @db.Uuid
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa     Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  responsable Usuario?               @relation("BodegaResponsable", fields: [responsableId], references: [id], onDelete: Restrict)
+  creadoPor   Usuario                @relation("BodegaCreador", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  existencias ExistenciaInventario[]
+  movimientos MovimientoInventario[]
+  recepciones Recepcion[]
+
+  @@unique([empresaId, codigo])
+  @@unique([id, empresaId])
+  @@index([empresaId, activo])
+  @@map("bodegas")
+}
+
+// Saldo vigente por producto y bodega. Se modifica solo dentro de la transacción que crea el movimiento.
+model ExistenciaInventario {
+  empresaId     String   @map("empresa_id") @db.Uuid
+  productoId    String   @map("producto_id") @db.Uuid
+  bodegaId      String   @map("bodega_id") @db.Uuid
+  cantidad      Decimal  @default(0) @db.Decimal(18, 4)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  bodega   Bodega   @relation(fields: [bodegaId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  @@id([productoId, bodegaId])
+  @@index([empresaId, bodegaId])
+  @@map("existencias")
+}
+
+model Recepcion {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  empresaId         String   @map("empresa_id") @db.Uuid
+  numero            String
+  operacionId       String   @map("operacion_id") @db.Uuid
+  bodegaId          String   @map("bodega_id") @db.Uuid
+  fechaRecepcion    DateTime @map("fecha_recepcion") @db.Date
+  documentoId       String?  @map("documento_id") @db.Uuid
+  /// Token generado por el formulario: un reenvío con el mismo token nunca duplica la recepción.
+  claveIdempotencia String   @map("clave_idempotencia")
+  observaciones     String?
+  registradoPorId   String   @map("registrado_por_id") @db.Uuid
+  creadoEn          DateTime @default(now()) @map("creado_en")
+
+  empresa       Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion     Operacion              @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  bodega        Bodega                 @relation(fields: [bodegaId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  documento     Documento?             @relation(fields: [documentoId], references: [id], onDelete: Restrict)
+  registradoPor Usuario                @relation("RecepcionAutor", fields: [registradoPorId], references: [id], onDelete: Restrict)
+  lineas        RecepcionLinea[]
+  movimientos   MovimientoInventario[]
+
+  @@unique([empresaId, numero])
+  @@unique([empresaId, claveIdempotencia])
+  @@unique([id, empresaId])
+  @@index([empresaId, creadoEn])
+  @@index([operacionId])
+  @@map("recepciones")
+}
+
+model RecepcionLinea {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  empresaId        String   @map("empresa_id") @db.Uuid
+  recepcionId      String   @map("recepcion_id") @db.Uuid
+  productoId       String   @map("producto_id") @db.Uuid
+  cantidadEsperada Decimal? @map("cantidad_esperada") @db.Decimal(18, 4)
+  cantidadRecibida Decimal  @map("cantidad_recibida") @db.Decimal(18, 4)
+  observacion      String?
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  recepcion Recepcion @relation(fields: [recepcionId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  producto  Producto  @relation(fields: [productoId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  @@unique([recepcionId, productoId])
+  @@map("recepciones_lineas")
+}
+
+// Inmutable: un trigger impide UPDATE y DELETE. Cada fila afecta a UNA bodega.
+model MovimientoInventario {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  empresaId         String            @map("empresa_id") @db.Uuid
+  productoId        String            @map("producto_id") @db.Uuid
+  bodegaId          String            @map("bodega_id") @db.Uuid
+  tipo              TipoMovimiento
+  sentido           SentidoMovimiento
+  cantidad          Decimal           @db.Decimal(18, 4)
+  /// Saldo del producto en la bodega inmediatamente después del movimiento.
+  saldoPosterior    Decimal           @map("saldo_posterior") @db.Decimal(18, 4)
+  motivo            String?
+  referencia        String?
+  /// Une las dos filas de una transferencia (o las compensaciones de un mismo grupo).
+  grupoId           String?           @map("grupo_id") @db.Uuid
+  recepcionId       String?           @map("recepcion_id") @db.Uuid
+  operacionId       String?           @map("operacion_id") @db.Uuid
+  compensaDeId      String?           @unique @map("compensa_de_id") @db.Uuid
+  claveIdempotencia String?           @map("clave_idempotencia")
+  usuarioId         String            @map("usuario_id") @db.Uuid
+  creadoEn          DateTime          @default(now()) @map("creado_en")
+
+  empresa       Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  producto      Producto              @relation(fields: [productoId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  bodega        Bodega                @relation(fields: [bodegaId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  recepcion     Recepcion?            @relation(fields: [recepcionId], references: [id], onDelete: Restrict)
+  operacion     Operacion?            @relation(fields: [operacionId], references: [id], onDelete: Restrict)
+  compensaDe    MovimientoInventario? @relation("Compensacion", fields: [compensaDeId], references: [id], onDelete: Restrict)
+  compensadoPor MovimientoInventario? @relation("Compensacion")
+  usuario       Usuario               @relation("MovimientoAutor", fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@unique([empresaId, claveIdempotencia])
+  @@unique([id, empresaId])
+  @@index([empresaId, creadoEn])
+  @@index([productoId, bodegaId, creadoEn])
+  @@index([grupoId])
+  @@map("movimientos_inventario")
 }
