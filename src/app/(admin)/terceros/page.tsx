@@ -2,7 +2,7 @@ import { Plus } from "lucide-react"
 import Link from "next/link"
 
 import { AccesoDenegado } from "@/components/acceso-denegado"
-import { EnlaceBoton, Entrada, EncabezadoPagina, EstadoVacio, InsigniaEstado, Paginacion, Selector } from "@/components/comun/comunes"
+import { BarraFiltros, EnlaceBoton, Entrada, EncabezadoPagina, EstadoVacio, InsigniaEstado, Paginacion, Selector } from "@/components/comun/comunes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,8 +44,7 @@ export default async function Page({ searchParams }: Props) {
         }
       />
 
-      <Card>
-        <CardContent>
+      <BarraFiltros>
           <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]" role="search">
             <Entrada name="q" type="search" placeholder="Buscar por nombre, NIT o ciudad…" defaultValue={valor("q")} aria-label="Buscar" />
             <Selector name="rol" aria-label="Rol" defaultValue={valor("rol")} vacio="Todos los roles" opciones={opciones(ETIQUETA_ROL_TERCERO)} />
@@ -65,8 +64,7 @@ export default async function Page({ searchParams }: Props) {
               )}
             </div>
           </form>
-        </CardContent>
-      </Card>
+      </BarraFiltros>
 
       {filas.length === 0 ? (
         <EstadoVacio
@@ -80,7 +78,7 @@ export default async function Page({ searchParams }: Props) {
         />
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -118,7 +116,9 @@ export default async function Page({ searchParams }: Props) {
                 ))}
               </TableBody>
             </Table>
-            <Paginacion pagina={pagina} hayMas={hayMas} base={base} />
+            <div className="px-4">
+              <Paginacion pagina={pagina} hayMas={hayMas} base={base} />
+            </div>
           </CardContent>
         </Card>
       )}

@@ -2,7 +2,7 @@ import { Download } from "lucide-react"
 import Link from "next/link"
 
 import { AccesoDenegado } from "@/components/acceso-denegado"
-import { EncabezadoPagina, EnlaceBoton, Entrada, EstadoVacio, InsigniaEstado, Paginacion, Selector } from "@/components/comun/comunes"
+import { BarraFiltros, EncabezadoPagina, EnlaceBoton, Entrada, EstadoVacio, InsigniaEstado, Paginacion, Selector } from "@/components/comun/comunes"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -30,8 +30,7 @@ export default async function Page({ searchParams }: Props) {
         titulo="Documentos"
         descripcion="Archivos de todas las operaciones. Para cargar un documento, abra la operación y use su pestaña Documentos."
       />
-      <Card>
-        <CardContent>
+      <BarraFiltros>
           <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto]" role="search">
             <Entrada name="q" type="search" placeholder="Buscar por archivo o número de operación…" defaultValue={valor("q")} aria-label="Buscar" />
             <Selector name="estado" aria-label="Estado" defaultValue={valor("estado")} vacio="Todos los estados" opciones={[["por_revisar", "Por revisar (sin aprobar)"], ...opciones(ETIQUETA_ESTADO_DOCUMENTO)]} />
@@ -41,14 +40,13 @@ export default async function Page({ searchParams }: Props) {
               {hayFiltros && <EnlaceBoton href="/documentos" variante="ghost">Limpiar</EnlaceBoton>}
             </div>
           </form>
-        </CardContent>
-      </Card>
+      </BarraFiltros>
 
       {filas.length === 0 ? (
         <EstadoVacio titulo={hayFiltros ? "Sin resultados" : "Aún no hay documentos cargados"} descripcion={hayFiltros ? "Ajuste los filtros de búsqueda." : "Los documentos se cargan desde la pestaña Documentos de cada operación."} />
       ) : (
         <Card>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -81,7 +79,9 @@ export default async function Page({ searchParams }: Props) {
                 ))}
               </TableBody>
             </Table>
-            <Paginacion pagina={pagina} hayMas={hayMas} base={base} />
+            <div className="px-4">
+              <Paginacion pagina={pagina} hayMas={hayMas} base={base} />
+            </div>
           </CardContent>
         </Card>
       )}

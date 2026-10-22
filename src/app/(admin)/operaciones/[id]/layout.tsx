@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 
 import { AccesoDenegado } from "@/components/acceso-denegado"
 import { EncabezadoPagina, InsigniaEstado } from "@/components/comun/comunes"
-import { PestanasOperacion } from "@/components/operaciones/pestanas-operacion"
+import { Pestanas } from "@/components/comun/pestanas"
 import { Badge } from "@/components/ui/badge"
 import { exigirPermisoEmpresaActiva } from "@/lib/auth/sesion"
 import { ETIQUETA_ESTADO_OPERACION, ETIQUETA_TIPO_OPERACION } from "@/lib/etiquetas"
@@ -34,7 +34,16 @@ export default async function Layout({ children, params }: Props) {
           </>
         }
       />
-      <PestanasOperacion id={operacion.id} />
+      <Pestanas
+        etiqueta="Secciones del expediente"
+        items={[
+          { nombre: "General", href: `/operaciones/${operacion.id}`, exacto: true },
+          { nombre: "Documentos", href: `/operaciones/${operacion.id}/documentos` },
+          { nombre: "Logística", href: `/operaciones/${operacion.id}/logistica` },
+          { nombre: "Costos", href: `/operaciones/${operacion.id}/costos` },
+          { nombre: "Inteligencia", href: `/operaciones/${operacion.id}/inteligencia` },
+        ]}
+      />
       {children}
     </div>
   )

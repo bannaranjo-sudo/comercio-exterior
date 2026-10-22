@@ -64,6 +64,18 @@ export async function autorizar(
   empresaId: string,
   permiso: CodigoPermiso,
 ): Promise<ContextoAcceso> {
+  const contexto = await autorizarMembresia(headers, empresaId);
+  if (!contexto.permisos.has(permiso)) {
+    throw new ErrorAutorizacion("PERMISO_DENEGADO", "Permiso insuficiente.");
+  }
+  return contexto;
+}
+
+/**
+ * Valida sesión y membresía activa en la empresa, sin exigir un permiso concreto (secciones generales).
+ * Los permisos efectivos del rol se devuelven en el contexto para decidir qué mostrar.
+ */
+export async function autorizarMembresia(headers: Headers, empresaId: string): Promise<ContextoAcceso> {
   const usuarioId = await usuarioIdDeSesion(headers);
 
   const membresia = UUID.test(empresaId)
@@ -76,16 +88,11 @@ export async function autorizar(
     throw new ErrorAutorizacion("SIN_MEMBRESIA", "El usuario no pertenece a la empresa.");
   }
 
-  const permisos = new Set(membresia.rol.permisos.map((rp) => rp.permiso.codigo));
-  if (!permisos.has(permiso)) {
-    throw new ErrorAutorizacion("PERMISO_DENEGADO", "Permiso insuficiente.");
-  }
-
   return {
     usuarioId,
     empresaId,
     rolId: membresia.rolId,
     rolNombre: membresia.rol.nombre,
-    permisos,
+    permisos: new Set(membresia.rol.permisos.map((rp) => rp.permiso.codigo)),
   };
 }
