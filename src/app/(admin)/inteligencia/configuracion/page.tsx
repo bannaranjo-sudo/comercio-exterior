@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirPermisoEmpresaActiva } from "@/lib/auth/sesion"
 import { accionGuardarProveedor, accionProbarConexion } from "@/lib/inteligencia/acciones"
-import { PROVEEDORES } from "@/lib/inteligencia/proveedores"
-import { estadoIntegracion, listarProveedores, listarUso } from "@/lib/inteligencia/servicio"
+import { PROVEEDORES, PROVEEDORES_IMPLEMENTADOS } from "@/lib/inteligencia/proveedores"
+import { estadoIntegracion, listarProveedores, listarUso, ultimaPrueba } from "@/lib/inteligencia/servicio"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export const metadata = { title: "Configuración de IA · Comercio Exterior" }
@@ -19,6 +19,18 @@ export default async function Page() {
   const puedeConfigurar = ctx.permisos.has("inteligencia:configurar")
   const [proveedores, uso] = await Promise.all([listarProveedores(ctx), listarUso(ctx)])
   const integracion = estadoIntegracion()
+  const ultimas = new Map(
+    await Promise.all(PROVEEDORES_IMPLEMENTADOS.map(async (p) => [p, await ultimaPrueba(ctx, p)] as const)),
+  )
+  const estadoAdaptador = (proveedor: (typeof proveedores)[number]["proveedor"]): string => {
+    if (!PROVEEDORES_IMPLEMENTADOS.includes(proveedor)) return "Sin adaptador conectado."
+    const u = ultimas.get(proveedor)
+    if (!u) return "Adaptador disponible. Sin pruebas registradas."
+    const cuando = fecha.format(u.creadoEn)
+    if (u.estado === "EXITOSA") return `Adaptador disponible. Última prueba (${cuando}): generación exitosa.`
+    if (u.estado === "SIN_CONTENIDO") return `Adaptador disponible. Última prueba (${cuando}): API accesible, sin texto generado.`
+    return `Adaptador disponible. Última prueba (${cuando}): fallida (${u.codigoError ?? "error"}).`
+  }
 
   return (
     <div className="space-y-4">
@@ -36,7 +48,7 @@ export default async function Page() {
                   {habilitado ? "Habilitado" : "Deshabilitado"}
                 </Badge>
               </div>
-              <CardDescription>Sin adaptador conectado.</CardDescription>
+              <CardDescription>{estadoAdaptador(proveedor)}</CardDescription>
             </CardHeader>
             <CardContent>
               {puedeConfigurar ? (
@@ -113,8 +125,8 @@ export default async function Page() {
                     <TableCell>{fecha.format(u.creadoEn)}</TableCell>
                     <TableCell>{PROVEEDORES[u.proveedor].nombre} · {u.modelo}</TableCell>
                     <TableCell>
-                      <Badge variant={u.estado === "FALLIDA" ? "destructive" : "secondary"}>
-                        {u.estado === "FALLIDA" ? `Fallida (${u.codigoError})` : u.estado === "EXITOSA" ? "Exitosa" : "En curso"}
+                      <Badge variant={u.estado === "FALLIDA" || u.estado === "SIN_CONTENIDO" ? "destructive" : "secondary"}>
+                        {u.estado === "FALLIDA" ? `Fallida (${u.codigoError})` : u.estado === "EXITOSA" ? "Generación exitosa" : u.estado === "SIN_CONTENIDO" ? `API accesible, sin texto (${u.motivoFin ?? "n/d"})` : "En curso"}
                       </Badge>
                     </TableCell>
                     <TableCell>{u.duracionMs === null ? "—" : `${u.duracionMs} ms`}</TableCell>

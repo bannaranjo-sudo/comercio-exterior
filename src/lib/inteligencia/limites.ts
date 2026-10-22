@@ -2,8 +2,8 @@
 export const LIMITES = {
   /** Máximo absoluto de tokens de salida que cualquier adaptador puede solicitar. */
   tokensSalidaMax: 1024,
-  /** Tokens de salida de la prueba de conexión (respuesta mínima). */
-  tokensSalidaPrueba: 16,
+  /** Tokens de salida de la prueba. Margen para modelos de razonamiento, que gastan parte del tope sin emitir texto. */
+  tokensSalidaPrueba: 128,
   /** Tiempo máximo de espera de una llamada. */
   tiempoMaxMs: 20_000,
   /** Pruebas de conexión por empresa dentro de la ventana. */

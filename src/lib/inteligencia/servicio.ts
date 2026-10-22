@@ -226,9 +226,24 @@ export async function decidirAprobacion(
 // Prueba de conexión con proveedores. No devuelve ni almacena texto de mensajes o respuestas.
 // ---------------------------------------------------------------------------
 
+type DatosPrueba = { proveedor: ProveedorIA; modelo: string; duracionMs: number };
+
+/**
+ * EXITOSA: la API respondió y generó texto útil.
+ * SIN_CONTENIDO: la API es accesible, pero no devolvió texto útil (no es una generación exitosa).
+ * FALLIDA: no se obtuvo respuesta de la API (credenciales, cuota, modelo, conexión, límites).
+ */
 export type ResultadoPrueba =
-  | { estado: "EXITOSA"; proveedor: ProveedorIA; modelo: string; duracionMs: number; tokensEntrada: number | null; tokensSalida: number | null }
-  | { estado: "FALLIDA"; proveedor: ProveedorIA; modelo: string; duracionMs: number; codigo: CodigoErrorProveedor; mensaje: string };
+  | (DatosPrueba & {
+      estado: "EXITOSA" | "SIN_CONTENIDO";
+      apiAccesible: true;
+      tokensEntrada: number | null;
+      tokensSalida: number | null;
+      tokensRazonamiento: number | null;
+      caracteresSalida: number;
+      motivoFin: string | null;
+    })
+  | (DatosPrueba & { estado: "FALLIDA"; apiAccesible: false; codigo: CodigoErrorProveedor; mensaje: string });
 
 /** Las llamadas reales solo se permiten con IA_PRUEBA_REAL_AUTORIZADA=true en el servidor. */
 export const pruebaRealAutorizada = (): boolean => process.env.IA_PRUEBA_REAL_AUTORIZADA === "true";
@@ -291,35 +306,54 @@ export async function probarConexion(
   });
   if (!config?.habilitado) throw new ErrorValidacion("Habilite el proveedor en Configuración primero.");
 
-  const registro = async (estado: "EXITOSA" | "FALLIDA", cambios: object, id: string) =>
-    db.registroUso.update({ where: { id }, data: { estado, ...cambios } });
-
   const inicio = Date.now();
   let uso: { id: string };
   try {
     uso = await reservarUso(ctx, { proveedor, modelo });
   } catch (error) {
     const e = traducirError(error);
-    return { estado: "FALLIDA", proveedor, modelo, duracionMs: 0, codigo: e.codigo, mensaje: e.message };
+    return { estado: "FALLIDA", apiAccesible: false, proveedor, modelo, duracionMs: 0, codigo: e.codigo, mensaje: e.message };
   }
 
+  let respuesta;
   try {
-    const respuesta = await obtenerAdaptador(proveedor).generar({
+    respuesta = await obtenerAdaptador(proveedor).generar({
       referencia: { proveedor, modelo },
       mensajes: [{ rol: "user", contenido: "Responde únicamente: OK" }],
       maximoTokens: LIMITES.tokensSalidaPrueba,
     });
-    const duracionMs = Date.now() - inicio;
-    const tokensEntrada = respuesta.uso?.tokensEntrada ?? null;
-    const tokensSalida = respuesta.uso?.tokensSalida ?? null;
-    await registro("EXITOSA", { duracionMs, tokensEntrada, tokensSalida }, uso.id);
-    return { estado: "EXITOSA", proveedor, modelo, duracionMs, tokensEntrada, tokensSalida };
   } catch (error) {
     const e = traducirError(error);
     const duracionMs = Date.now() - inicio;
-    await registro("FALLIDA", { duracionMs, codigoError: e.codigo }, uso.id);
-    return { estado: "FALLIDA", proveedor, modelo, duracionMs, codigo: e.codigo, mensaje: e.message };
+    await db.registroUso.update({
+      where: { id: uso.id },
+      data: { estado: "FALLIDA", duracionMs, codigoError: e.codigo },
+    });
+    return { estado: "FALLIDA", apiAccesible: false, proveedor, modelo, duracionMs, codigo: e.codigo, mensaje: e.message };
   }
+
+  const duracionMs = Date.now() - inicio;
+  const caracteresSalida = respuesta.texto.trim().length;
+  const estado = caracteresSalida > 0 ? "EXITOSA" : "SIN_CONTENIDO";
+  const metricas = {
+    tokensEntrada: respuesta.uso?.tokensEntrada ?? null,
+    tokensSalida: respuesta.uso?.tokensSalida ?? null,
+    tokensRazonamiento: respuesta.uso?.tokensRazonamiento ?? null,
+    caracteresSalida,
+    motivoFin: respuesta.motivoFin ?? null,
+  };
+  // Solo metadatos: el texto devuelto por el proveedor no se almacena ni se devuelve.
+  await db.registroUso.update({ where: { id: uso.id }, data: { estado, duracionMs, ...metricas } });
+  return { estado, apiAccesible: true, proveedor, modelo, duracionMs, ...metricas };
+}
+
+/** Último resultado registrado de una prueba de conexión del proveedor, para la tarjeta de estado. */
+export function ultimaPrueba(ctx: ContextoAcceso, proveedor: ProveedorIA) {
+  return db.registroUso.findFirst({
+    where: { empresaId: ctx.empresaId, tipo: "PRUEBA_CONEXION", proveedor, estado: { not: "EN_CURSO" } },
+    select: { estado: true, modelo: true, codigoError: true, creadoEn: true },
+    orderBy: { creadoEn: "desc" },
+  });
 }
 
 export function listarUso(ctx: ContextoAcceso) {
@@ -327,7 +361,8 @@ export function listarUso(ctx: ContextoAcceso) {
     where: { empresaId: ctx.empresaId },
     select: {
       id: true, tipo: true, proveedor: true, modelo: true, estado: true, codigoError: true,
-      duracionMs: true, tokensEntrada: true, tokensSalida: true, creadoEn: true,
+      duracionMs: true, tokensEntrada: true, tokensSalida: true, tokensRazonamiento: true,
+      caracteresSalida: true, motivoFin: true, creadoEn: true,
     },
     orderBy: { creadoEn: "desc" },
     take: 10,

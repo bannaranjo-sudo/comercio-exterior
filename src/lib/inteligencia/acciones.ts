@@ -104,6 +104,12 @@ export async function accionProbarConexion(_: EstadoAccion, formData: FormData):
     });
     if (r.estado === "FALLIDA") throw new servicio.ErrorValidacion(r.mensaje);
     const tokens = `${r.tokensEntrada ?? "n/d"} entrada / ${r.tokensSalida ?? "n/d"} salida`;
-    return `Conexión correcta · ${PROVEEDORES[r.proveedor].nombre} · ${r.modelo} · ${r.duracionMs} ms · tokens: ${tokens}`;
+    if (r.estado === "SIN_CONTENIDO") {
+      // La API respondió, pero no se generó texto: no se presenta como éxito.
+      throw new servicio.ErrorValidacion(
+        `API accesible, pero sin texto generado (motivo: ${r.motivoFin ?? "n/d"}; tokens: ${tokens}). La generación no está verificada.`,
+      );
+    }
+    return `Generación correcta · ${PROVEEDORES[r.proveedor].nombre} · ${r.modelo} · ${r.duracionMs} ms · tokens: ${tokens}`;
   });
 }

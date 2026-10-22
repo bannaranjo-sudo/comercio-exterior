@@ -9,6 +9,9 @@ export const PROVEEDORES = {
   GOOGLE: { nombre: "Google", prefijo: "google" },
 } as const satisfies Record<ProveedorIA, { nombre: string; prefijo: string }>;
 
+/** Proveedores con adaptador implementado en el código. */
+export const PROVEEDORES_IMPLEMENTADOS: readonly ProveedorIA[] = ["OPENAI"];
+
 export const LISTA_PROVEEDORES = Object.keys(PROVEEDORES) as ProveedorIA[];
 
 export const esProveedor = (valor: unknown): valor is ProveedorIA =>
@@ -30,7 +33,10 @@ export type SolicitudGeneracion = {
 
 export type RespuestaGeneracion = {
   texto: string;
-  uso?: { tokensEntrada: number; tokensSalida: number };
+  /** Motivo de finalización informado por el proveedor (p. ej. "stop", "length"). */
+  motivoFin?: string;
+  /** Métricas que el proveedor no informa quedan indefinidas; nunca se asumen en 0. */
+  uso?: { tokensEntrada?: number; tokensSalida?: number; tokensRazonamiento?: number };
 };
 
 export interface AdaptadorProveedor {

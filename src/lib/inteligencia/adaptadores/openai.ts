@@ -4,6 +4,25 @@ import { ErrorProveedorIA, traducirError } from "@/lib/inteligencia/errores";
 import { LIMITES, limitarTokensSalida } from "@/lib/inteligencia/limites";
 import type { AdaptadorProveedor, RespuestaGeneracion, SolicitudGeneracion } from "@/lib/inteligencia/proveedores";
 
+type ResultadoSDK = {
+  text: string;
+  finishReason: string;
+  usage: { inputTokens?: number; outputTokens?: number; outputTokenDetails?: { reasoningTokens?: number } };
+};
+
+/** Convierte el resultado del AI SDK sin inventar métricas: lo que el proveedor no informa queda indefinido. */
+export function normalizarRespuesta({ text, finishReason, usage }: ResultadoSDK): RespuestaGeneracion {
+  const tokensRazonamiento = usage.outputTokenDetails?.reasoningTokens;
+  const hayUso = usage.inputTokens !== undefined || usage.outputTokens !== undefined;
+  return {
+    texto: text,
+    motivoFin: finishReason,
+    uso: hayUso
+      ? { tokensEntrada: usage.inputTokens, tokensSalida: usage.outputTokens, tokensRazonamiento }
+      : undefined,
+  };
+}
+
 /**
  * Adaptador OpenAI sobre Vercel AI SDK.
  * La clave se lee solo de OPENAI_API_KEY (servidor) en cada llamada; nunca se guarda ni se registra.
@@ -25,14 +44,7 @@ export const adaptadorOpenAI: AdaptadorProveedor = {
         maxRetries: 0,
         abortSignal: AbortSignal.timeout(LIMITES.tiempoMaxMs),
       });
-      const { inputTokens, outputTokens } = resultado.usage;
-      return {
-        texto: resultado.text,
-        uso:
-          inputTokens === undefined && outputTokens === undefined
-            ? undefined
-            : { tokensEntrada: inputTokens ?? 0, tokensSalida: outputTokens ?? 0 },
-      };
+      return normalizarRespuesta(resultado);
     } catch (error) {
       throw traducirError(error);
     }

@@ -5,10 +5,10 @@ import { APICallError } from "ai";
 import { autorizar, ErrorAutorizacion, type ContextoAcceso } from "../src/lib/auth/autorizacion";
 import { crearUsuarioConCredenciales } from "../src/lib/auth/usuarios";
 import { db } from "../src/lib/db";
-import { adaptadorOpenAI } from "../src/lib/inteligencia/adaptadores/openai";
+import { adaptadorOpenAI, normalizarRespuesta } from "../src/lib/inteligencia/adaptadores/openai";
 import { ErrorProveedorIA, traducirError } from "../src/lib/inteligencia/errores";
 import { LIMITES, limitarTokensSalida } from "../src/lib/inteligencia/limites";
-import { registrarAdaptador, type AdaptadorProveedor, type SolicitudGeneracion } from "../src/lib/inteligencia/proveedores";
+import { registrarAdaptador, type AdaptadorProveedor, type RespuestaGeneracion, type SolicitudGeneracion } from "../src/lib/inteligencia/proveedores";
 import * as servicio from "../src/lib/inteligencia/servicio";
 import { sembrar } from "../prisma/seed";
 import { iniciarSesion } from "./ayudas";
@@ -21,7 +21,7 @@ const correo = (alias: string) => `${alias}-${sufijo}@test.invalid`;
 const rechazaValidacion = (e: unknown) => e instanceof servicio.ErrorValidacion;
 
 let llamadas: SolicitudGeneracion[] = [];
-let comportamiento: () => Promise<{ texto: string; uso?: { tokensEntrada: number; tokensSalida: number } }>;
+let comportamiento: () => Promise<RespuestaGeneracion>;
 
 const simulado = (proveedor: "OPENAI" | "ANTHROPIC" | "GOOGLE"): AdaptadorProveedor => ({
   proveedor,
@@ -97,7 +97,11 @@ describe("integración de proveedores (adaptadores simulados)", () => {
   it("registra proveedor, modelo, duración y tokens, y devuelve solo métricas", async () => {
     const r = await servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" });
     assert.equal(r.estado, "EXITOSA");
-    assert.deepEqual(Object.keys(r).sort(), ["duracionMs", "estado", "modelo", "proveedor", "tokensEntrada", "tokensSalida"]);
+    assert.deepEqual(Object.keys(r).sort(), [
+      "apiAccesible", "caracteresSalida", "duracionMs", "estado", "modelo", "motivoFin",
+      "proveedor", "tokensEntrada", "tokensRazonamiento", "tokensSalida",
+    ]);
+    assert.equal(r.estado === "EXITOSA" && r.caracteresSalida, TEXTO_PROVEEDOR.length);
     assert.equal(llamadas.length, 1);
     assert.equal(llamadas[0].maximoTokens, LIMITES.tokensSalidaPrueba);
 
@@ -172,6 +176,61 @@ describe("integración de proveedores (adaptadores simulados)", () => {
     assert.equal(llamadas.length, LIMITES.pruebas.max);
     // El límite es por empresa: Beta no se ve afectada.
     assert.equal((await servicio.probarConexion(adminBeta, { proveedor: "OPENAI", modelo: "gpt-5-mini" })).estado, "EXITOSA");
+  });
+
+  it("distingue API accesible de generación exitosa: sin texto no es éxito", async () => {
+    for (const texto of ["", "  \n "]) {
+      comportamiento = async () => ({
+        texto, motivoFin: "length", uso: { tokensEntrada: 11, tokensSalida: 128, tokensRazonamiento: 128 },
+      });
+      await db.registroUso.deleteMany();
+      const r = await servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" });
+      assert.equal(r.estado, "SIN_CONTENIDO");
+      assert.equal(r.apiAccesible, true);
+      assert.ok("caracteresSalida" in r && r.caracteresSalida === 0 && r.motivoFin === "length");
+      const fila = await db.registroUso.findFirstOrThrow();
+      assert.deepEqual(
+        [fila.estado, fila.tokensEntrada, fila.tokensSalida, fila.tokensRazonamiento, fila.caracteresSalida, fila.motivoFin],
+        ["SIN_CONTENIDO", 11, 128, 128, 0, "length"],
+      );
+      assert.equal((await servicio.ultimaPrueba(adminAlfa, "OPENAI"))?.estado, "SIN_CONTENIDO");
+    }
+    // Con texto útil sí es una generación exitosa.
+    comportamiento = async () => ({ texto: "OK", motivoFin: "stop", uso: { tokensEntrada: 11, tokensSalida: 2 } });
+    await db.registroUso.deleteMany();
+    const r = await servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" });
+    assert.equal(r.estado, "EXITOSA");
+    assert.equal((await servicio.ultimaPrueba(adminAlfa, "OPENAI"))?.estado, "EXITOSA");
+    assert.equal(await servicio.ultimaPrueba(adminBeta, "OPENAI"), null); // aislado por empresa
+  });
+
+  it("no inventa métricas: lo que el proveedor no informa queda en null, no en 0", async () => {
+    comportamiento = async () => ({ texto: "OK" });
+    const sinUso = await servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" });
+    assert.equal(sinUso.estado === "EXITOSA" && sinUso.tokensEntrada, null);
+    assert.equal(sinUso.estado === "EXITOSA" && sinUso.tokensSalida, null);
+    comportamiento = async () => ({ texto: "OK", uso: { tokensEntrada: 5 } });
+    const parcial = await servicio.probarConexion(adminAlfa, { proveedor: "OPENAI", modelo: "gpt-5-mini" });
+    assert.equal(parcial.estado === "EXITOSA" && parcial.tokensSalida, null);
+    assert.equal(parcial.estado === "EXITOSA" && parcial.tokensEntrada, 5);
+  });
+
+  it("interpreta las métricas del AI SDK sin alterarlas (razonamiento, vacío, 0 real y ausentes)", () => {
+    // Modelo de razonamiento que agota el tope: sin texto, motivo "length", salida = tope.
+    assert.deepEqual(
+      normalizarRespuesta({ text: "", finishReason: "length", usage: { inputTokens: 11, outputTokens: 16, outputTokenDetails: { reasoningTokens: 16 } } }),
+      { texto: "", motivoFin: "length", uso: { tokensEntrada: 11, tokensSalida: 16, tokensRazonamiento: 16 } },
+    );
+    // Texto normal.
+    assert.deepEqual(
+      normalizarRespuesta({ text: "OK", finishReason: "stop", usage: { inputTokens: 11, outputTokens: 20, outputTokenDetails: { reasoningTokens: 18 } } }),
+      { texto: "OK", motivoFin: "stop", uso: { tokensEntrada: 11, tokensSalida: 20, tokensRazonamiento: 18 } },
+    );
+    // 0 informado por el proveedor se conserva como 0.
+    assert.equal(normalizarRespuesta({ text: "", finishReason: "stop", usage: { inputTokens: 11, outputTokens: 0 } }).uso?.tokensSalida, 0);
+    // Sin uso: indefinido, nunca 0.
+    assert.equal(normalizarRespuesta({ text: "", finishReason: "stop", usage: {} }).uso, undefined);
+    assert.equal(normalizarRespuesta({ text: "x", finishReason: "stop", usage: { inputTokens: 3 } }).uso?.tokensSalida, undefined);
   });
 
   it("el límite se respeta con solicitudes simultáneas", async () => {

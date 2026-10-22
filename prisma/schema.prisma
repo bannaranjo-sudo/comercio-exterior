@@ -344,25 +344,30 @@ enum EstadoUso {
   EN_CURSO
   EXITOSA
   FALLIDA
+  /// La API respondió, pero no generó texto útil.
+  SIN_CONTENIDO
 
   @@map("estado_uso")
 }
 
 // Bitácora de llamadas a proveedores de IA: sin contenido de mensajes ni respuestas, solo metadatos.
 model RegistroUso {
-  id            String      @id @default(uuid(7)) @db.Uuid
-  empresaId     String      @map("empresa_id") @db.Uuid
-  usuarioId     String      @map("usuario_id") @db.Uuid
-  tipo          TipoUso
-  proveedor     ProveedorIA
-  modelo        String
-  estado        EstadoUso   @default(EN_CURSO)
-  codigoError   String?     @map("codigo_error")
-  duracionMs    Int?        @map("duracion_ms")
-  tokensEntrada Int?        @map("tokens_entrada")
-  tokensSalida  Int?        @map("tokens_salida")
-  creadoEn      DateTime    @default(now()) @map("creado_en")
-  actualizadoEn DateTime    @updatedAt @map("actualizado_en")
+  id                 String      @id @default(uuid(7)) @db.Uuid
+  empresaId          String      @map("empresa_id") @db.Uuid
+  usuarioId          String      @map("usuario_id") @db.Uuid
+  tipo               TipoUso
+  proveedor          ProveedorIA
+  modelo             String
+  estado             EstadoUso   @default(EN_CURSO)
+  codigoError        String?     @map("codigo_error")
+  duracionMs         Int?        @map("duracion_ms")
+  tokensEntrada      Int?        @map("tokens_entrada")
+  tokensSalida       Int?        @map("tokens_salida")
+  tokensRazonamiento Int?        @map("tokens_razonamiento")
+  caracteresSalida   Int?        @map("caracteres_salida")
+  motivoFin          String?     @map("motivo_fin")
+  creadoEn           DateTime    @default(now()) @map("creado_en")
+  actualizadoEn      DateTime    @updatedAt @map("actualizado_en")
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
