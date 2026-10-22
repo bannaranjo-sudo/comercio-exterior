@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { ErrorValidacion } from "@/lib/errores";
 import type { ContextoAcceso } from "@/lib/auth/autorizacion";
 import { ErrorProveedorIA, traducirError, type CodigoErrorProveedor } from "@/lib/inteligencia/errores";
 import { LIMITES } from "@/lib/inteligencia/limites";
@@ -10,12 +11,7 @@ import type { ProveedorIA } from "@/generated/prisma/enums";
 // Cada función recibe un ContextoAcceso ya autorizado (requirePermission/autorizar) y
 // filtra SIEMPRE por ctx.empresaId; nunca se acepta una empresa como parámetro.
 
-export class ErrorValidacion extends Error {
-  constructor(mensaje: string) {
-    super(mensaje);
-    this.name = "ErrorValidacion";
-  }
-}
+export { ErrorValidacion };
 
 const SLUG = /^[a-z][a-z0-9-]{1,39}$/;
 const MODELO = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;

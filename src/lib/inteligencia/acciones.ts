@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { EstadoAccion } from "@/lib/acciones";
 import { ErrorAutorizacion, type ContextoAcceso } from "@/lib/auth/autorizacion";
 import { requirePermissionActiva } from "@/lib/auth/sesion";
 import type { CodigoPermiso } from "@/lib/permisos/catalogo";
@@ -8,7 +9,7 @@ import { registrarAdaptadoresPredeterminados } from "@/lib/inteligencia/adaptado
 import { PROVEEDORES } from "@/lib/inteligencia/proveedores";
 import * as servicio from "@/lib/inteligencia/servicio";
 
-export type EstadoAccion = { ok?: string; error?: string };
+export type { EstadoAccion };
 
 // Toda acción exige sesión y permiso en la empresa activa (validada en servidor).
 // Ninguna recibe empresaId del cliente. Solo la prueba de conexión llama a un proveedor, y únicamente

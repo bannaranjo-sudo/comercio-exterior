@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import "dotenv/config";
 
 // Las pruebas usan una base exclusiva (…_test); nunca la de desarrollo.
@@ -12,3 +14,6 @@ process.env.BETTER_AUTH_SECRET ??= "secreto-solo-para-pruebas-0123456789abcdef";
 delete process.env.OPENAI_API_KEY;
 delete process.env.IA_PRUEBA_REAL_AUTORIZADA;
 process.env.OPENAI_MODELOS_PERMITIDOS = "gpt-5-mini,gpt-5,gpt-4.1-mini,gpt-4.1";
+
+// Los documentos de prueba se guardan fuera del proyecto.
+process.env.STORAGE_DIR = path.join(os.tmpdir(), "comext-test-storage");

@@ -28,6 +28,17 @@ model Empresa {
   iaAprobaciones Aprobacion[]
   iaUso          RegistroUso[]
 
+  terceros               Tercero[]
+  operaciones            Operacion[]
+  operacionesHistorial   OperacionHistorial[]
+  documentos             Documento[]
+  requisitosDocumentales RequisitoDocumento[]
+  envios                 Envio[]
+  eventosLogisticos      EventoLogistico[]
+  costos                 Costo[]
+  contadores             ContadorConsecutivo[]
+  invitaciones           Invitacion[]
+
   @@map("empresas")
 }
 
@@ -48,6 +59,15 @@ model Usuario {
   iaEjecuciones  Ejecucion[]
   iaAprobaciones Aprobacion[]
   iaUso          RegistroUso[]
+
+  tercerosCreados       Tercero[]            @relation("TerceroCreador")
+  operacionesCreadas    Operacion[]          @relation("OperacionCreador")
+  historialOperaciones  OperacionHistorial[] @relation("HistorialUsuario")
+  documentosSubidos     Documento[]          @relation("DocumentoAutor")
+  eventosRegistrados    EventoLogistico[]    @relation("EventoAutor")
+  costosRegistrados     Costo[]              @relation("CostoAutor")
+  invitacionesRecibidas Invitacion[]         @relation("InvitacionUsuario")
+  invitacionesCreadas   Invitacion[]         @relation("InvitacionAutor")
 
   @@map("usuarios")
 }
@@ -159,6 +179,8 @@ model EmpresaUsuario {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   rol     Rol     @relation(fields: [rolId, empresaId], references: [id, empresaId], onDelete: Restrict)
+
+  operacionesResponsable Operacion[]
 
   @@unique([empresaId, usuarioId])
   @@index([usuarioId])
@@ -374,4 +396,372 @@ model RegistroUso {
 
   @@index([empresaId, tipo, creadoEn])
   @@map("ia_uso")
+}
+
+// ---------------------------------------------------------------------------
+// MVP de comercio exterior: terceros, operaciones, documentos, logística y costos.
+// Todo registro lleva empresa_id; las relaciones usan claves compuestas (id, empresa_id)
+// para impedir vínculos entre empresas. Las referencias opcionales se refuerzan con triggers.
+// ---------------------------------------------------------------------------
+
+enum RolTercero {
+  PROVEEDOR
+  CLIENTE
+  AGENTE_ADUANA
+  TRANSPORTADOR
+  OPERADOR_LOGISTICO
+  OTRO
+
+  @@map("rol_tercero")
+}
+
+enum AmbitoTercero {
+  NACIONAL
+  INTERNACIONAL
+
+  @@map("ambito_tercero")
+}
+
+enum TipoOperacion {
+  IMPORTACION
+  EXPORTACION
+
+  @@map("tipo_operacion")
+}
+
+enum EstadoOperacion {
+  BORRADOR
+  EN_PREPARACION
+  EN_TRANSITO
+  EN_ADUANA
+  FINALIZADA
+  CANCELADA
+
+  @@map("estado_operacion")
+}
+
+enum Incoterm {
+  EXW
+  FCA
+  FAS
+  FOB
+  CFR
+  CIF
+  CPT
+  CIP
+  DAP
+  DPU
+  DDP
+
+  @@map("incoterm")
+}
+
+enum ModalidadTransporte {
+  MARITIMO
+  AEREO
+  TERRESTRE
+  MULTIMODAL
+
+  @@map("modalidad_transporte")
+}
+
+enum TipoDocumento {
+  FACTURA_COMERCIAL
+  LISTA_EMPAQUE
+  DOCUMENTO_TRANSPORTE
+  CERTIFICADO_ORIGEN
+  FICHA_TECNICA
+  DECLARACION_ADUANERA
+  POLIZA_SEGURO
+  OTRO
+
+  @@map("tipo_documento")
+}
+
+enum EstadoDocumento {
+  PENDIENTE
+  RECIBIDO
+  OBSERVADO
+  APROBADO
+
+  @@map("estado_documento")
+}
+
+enum EstadoEnvio {
+  PROGRAMADO
+  EN_TRANSITO
+  EN_PUERTO
+  ENTREGADO
+  RETRASADO
+
+  @@map("estado_envio")
+}
+
+enum TipoEvento {
+  HITO
+  NOVEDAD
+
+  @@map("tipo_evento")
+}
+
+enum SeveridadNovedad {
+  BAJA
+  MEDIA
+  ALTA
+
+  @@map("severidad_novedad")
+}
+
+enum CategoriaCosto {
+  VALOR_COMERCIAL
+  FLETE_INTERNACIONAL
+  SEGURO
+  GASTOS_PORTUARIOS
+  AGENCIA_ADUANAS
+  TRANSPORTE_NACIONAL
+  ALMACENAMIENTO
+  TRIBUTOS_ADUANEROS
+  OTROS
+
+  @@map("categoria_costo")
+}
+
+enum EstadoCosto {
+  ESTIMADO
+  REAL
+
+  @@map("estado_costo")
+}
+
+model Tercero {
+  id                   String        @id @default(uuid(7)) @db.Uuid
+  empresaId            String        @map("empresa_id") @db.Uuid
+  razonSocial          String        @map("razon_social")
+  nombreComercial      String?       @map("nombre_comercial")
+  identificacionFiscal String        @map("identificacion_fiscal")
+  ambito               AmbitoTercero @default(NACIONAL)
+  roles                RolTercero[]
+  pais                 String
+  ciudad               String?
+  direccion            String?
+  correo               String?
+  telefono             String?
+  contacto             String?
+  activo               Boolean       @default(true)
+  observaciones        String?
+  creadoPorId          String        @map("creado_por_id") @db.Uuid
+  creadoEn             DateTime      @default(now()) @map("creado_en")
+  actualizadoEn        DateTime      @updatedAt @map("actualizado_en")
+
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  creadoPor   Usuario     @relation("TerceroCreador", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  operaciones Operacion[]
+  envios      Envio[]
+
+  @@unique([empresaId, identificacionFiscal])
+  @@unique([id, empresaId])
+  @@index([empresaId, activo])
+  @@map("terceros")
+}
+
+model ContadorConsecutivo {
+  empresaId String @map("empresa_id") @db.Uuid
+  nombre    String
+  ultimo    Int    @default(0)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@id([empresaId, nombre])
+  @@map("contadores")
+}
+
+model Operacion {
+  id            String              @id @default(uuid(7)) @db.Uuid
+  empresaId     String              @map("empresa_id") @db.Uuid
+  consecutivo   Int
+  numero        String
+  tipo          TipoOperacion
+  estado        EstadoOperacion     @default(BORRADOR)
+  fechaApertura DateTime            @map("fecha_apertura") @db.Date
+  descripcion   String
+  terceroId     String              @map("tercero_id") @db.Uuid
+  paisOrigen    String              @map("pais_origen")
+  paisDestino   String              @map("pais_destino")
+  incoterm      Incoterm
+  lugarIncoterm String              @map("lugar_incoterm")
+  moneda        String              @db.VarChar(3)
+  valorEstimado Decimal             @map("valor_estimado") @db.Decimal(18, 2)
+  modalidad     ModalidadTransporte
+  responsableId String              @map("responsable_id") @db.Uuid
+  observaciones String?
+  creadoPorId   String              @map("creado_por_id") @db.Uuid
+  creadoEn      DateTime            @default(now()) @map("creado_en")
+  actualizadoEn DateTime            @updatedAt @map("actualizado_en")
+
+  empresa     Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  tercero     Tercero              @relation(fields: [terceroId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  responsable EmpresaUsuario       @relation(fields: [empresaId, responsableId], references: [empresaId, usuarioId], onDelete: Restrict)
+  creadoPor   Usuario              @relation("OperacionCreador", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  historial   OperacionHistorial[]
+  documentos  Documento[]
+  envio       Envio?
+  eventos     EventoLogistico[]
+  costos      Costo[]
+
+  @@unique([empresaId, consecutivo])
+  @@unique([empresaId, numero])
+  @@unique([id, empresaId])
+  @@index([empresaId, estado])
+  @@index([empresaId, creadoEn])
+  @@map("operaciones")
+}
+
+model OperacionHistorial {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  empresaId   String   @map("empresa_id") @db.Uuid
+  operacionId String   @map("operacion_id") @db.Uuid
+  usuarioId   String   @map("usuario_id") @db.Uuid
+  accion      String
+  detalle     Json?
+  creadoEn    DateTime @default(now()) @map("creado_en")
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Cascade)
+  usuario   Usuario   @relation("HistorialUsuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([operacionId, creadoEn])
+  @@map("operaciones_historial")
+}
+
+model Documento {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  empresaId           String          @map("empresa_id") @db.Uuid
+  operacionId         String          @map("operacion_id") @db.Uuid
+  tipo                TipoDocumento
+  estado              EstadoDocumento @default(RECIBIDO)
+  nombreOriginal      String          @map("nombre_original")
+  claveAlmacenamiento String          @unique @map("clave_almacenamiento")
+  tamanoBytes         Int             @map("tamano_bytes")
+  tipoMime            String          @map("tipo_mime")
+  sha256              String
+  observaciones       String?
+  subidoPorId         String          @map("subido_por_id") @db.Uuid
+  creadoEn            DateTime        @default(now()) @map("creado_en")
+  actualizadoEn       DateTime        @updatedAt @map("actualizado_en")
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  subidoPor Usuario   @relation("DocumentoAutor", fields: [subidoPorId], references: [id], onDelete: Restrict)
+
+  @@index([empresaId, estado])
+  @@index([operacionId, tipo])
+  @@map("documentos")
+}
+
+// Lista configurable de documentos exigidos por tipo de operación (si no hay filas, rigen los valores predeterminados).
+model RequisitoDocumento {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  empresaId     String        @map("empresa_id") @db.Uuid
+  tipoOperacion TipoOperacion @map("tipo_operacion")
+  tipoDocumento TipoDocumento @map("tipo_documento")
+  obligatorio   Boolean       @default(true)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, tipoOperacion, tipoDocumento])
+  @@map("requisitos_documentales")
+}
+
+model Envio {
+  id                   String               @id @default(uuid(7)) @db.Uuid
+  empresaId            String               @map("empresa_id") @db.Uuid
+  operacionId          String               @map("operacion_id") @db.Uuid
+  medioTransporte      ModalidadTransporte? @map("medio_transporte")
+  numeroGuia           String?              @map("numero_guia")
+  transportadorId      String?              @map("transportador_id") @db.Uuid
+  puertoOrigen         String?              @map("puerto_origen")
+  puertoDestino        String?              @map("puerto_destino")
+  fechaEstimadaSalida  DateTime?            @map("fecha_estimada_salida") @db.Date
+  fechaRealSalida      DateTime?            @map("fecha_real_salida") @db.Date
+  fechaEstimadaLlegada DateTime?            @map("fecha_estimada_llegada") @db.Date
+  fechaRealLlegada     DateTime?            @map("fecha_real_llegada") @db.Date
+  estadoEnvio          EstadoEnvio          @default(PROGRAMADO) @map("estado_envio")
+  creadoEn             DateTime             @default(now()) @map("creado_en")
+  actualizadoEn        DateTime             @updatedAt @map("actualizado_en")
+
+  empresa       Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion     Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Cascade)
+  transportador Tercero?  @relation(fields: [transportadorId], references: [id], onDelete: Restrict)
+
+  @@unique([operacionId, empresaId])
+  @@unique([operacionId])
+  @@index([empresaId, fechaEstimadaLlegada])
+  @@map("envios")
+}
+
+model EventoLogistico {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  empresaId       String            @map("empresa_id") @db.Uuid
+  operacionId     String            @map("operacion_id") @db.Uuid
+  tipo            TipoEvento
+  titulo          String
+  descripcion     String?
+  fechaEvento     DateTime          @map("fecha_evento")
+  severidad       SeveridadNovedad?
+  resuelta        Boolean           @default(false)
+  resueltaEn      DateTime?         @map("resuelta_en")
+  registradoPorId String            @map("registrado_por_id") @db.Uuid
+  creadoEn        DateTime          @default(now()) @map("creado_en")
+  actualizadoEn   DateTime          @updatedAt @map("actualizado_en")
+
+  empresa       Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion     Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  registradoPor Usuario   @relation("EventoAutor", fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  @@index([operacionId, fechaEvento])
+  @@index([empresaId, tipo, resuelta])
+  @@map("eventos_logisticos")
+}
+
+model Costo {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  empresaId       String         @map("empresa_id") @db.Uuid
+  operacionId     String         @map("operacion_id") @db.Uuid
+  categoria       CategoriaCosto
+  concepto        String
+  valor           Decimal        @db.Decimal(18, 2)
+  moneda          String         @db.VarChar(3)
+  fecha           DateTime       @db.Date
+  estado          EstadoCosto
+  observacion     String?
+  registradoPorId String         @map("registrado_por_id") @db.Uuid
+  creadoEn        DateTime       @default(now()) @map("creado_en")
+  actualizadoEn   DateTime       @updatedAt @map("actualizado_en")
+
+  empresa       Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  operacion     Operacion @relation(fields: [operacionId, empresaId], references: [id, empresaId], onDelete: Restrict)
+  registradoPor Usuario   @relation("CostoAutor", fields: [registradoPorId], references: [id], onDelete: Restrict)
+
+  @@index([operacionId, estado])
+  @@index([empresaId, moneda])
+  @@map("costos")
+}
+
+// Invitación de un solo uso para que un usuario nuevo defina su propia contraseña. Solo se guarda el hash del token.
+model Invitacion {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  empresaId   String    @map("empresa_id") @db.Uuid
+  usuarioId   String    @map("usuario_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  expiraEn    DateTime  @map("expira_en")
+  usadaEn     DateTime? @map("usada_en")
+  creadoPorId String    @map("creado_por_id") @db.Uuid
+  creadoEn    DateTime  @default(now()) @map("creado_en")
+
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation("InvitacionUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  creadoPor Usuario @relation("InvitacionAutor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+
+  @@index([usuarioId])
+  @@map("invitaciones")
 }

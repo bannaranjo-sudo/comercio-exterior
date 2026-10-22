@@ -45,3 +45,6 @@ next-env.d.ts
 
 # cliente Prisma generado
 /src/generated
+
+# archivos privados de documentos (almacenamiento local del MVP)
+/storage
