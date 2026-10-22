@@ -94,3 +94,10 @@ Defina `BETTER_AUTH_URL` con el dominio **de producción** del proyecto (no con 
 - **Arranque en frío** de funciones y de la base (según proveedor): la primera carga puede tardar unos segundos.
 - La rama de producción de Vercel apunta a `qa`: no conecte este proyecto a la base local ni a COOPDECOC.
 - Los datos de QA son ficticios; no cargue información empresarial real.
+
+## 9. Estado del entorno publicado
+
+- URL: https://comercio-exterior-qa.vercel.app (proyecto Vercel `comercio-exterior-qa`; rama de producción `main`; despliegue desde la CLI con `.vercelignore` o desde GitHub).
+- Base: proyecto Neon `comercio-exterior-qa` (AWS us-east-2), exclusivo de QA; 9 migraciones aplicadas con `npm run qa:migrar`.
+- Empresa ficticia `QA-0001` con datos demo; cuentas ficticias `admin.qa@…invalid` (pendiente de activar con enlace) y `luisa.qa@…invalid` (rol Operador).
+- Las variables de Vercel están marcadas como sensibles: para cambiarlas use `vercel env rm/add` o el panel; no se pueden leer de vuelta.
