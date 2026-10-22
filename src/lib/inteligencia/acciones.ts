@@ -77,12 +77,14 @@ export async function accionAsignarModelo(_: EstadoAccion, formData: FormData): 
 }
 
 export async function accionSolicitarEjecucion(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {
-  return proteger("inteligencia:ejecutar", "Solicitud registrada en cola.", (ctx) =>
-    servicio.solicitarEjecucion(ctx, {
+  // Solo registra la solicitud en cola; no ejecuta ningún análisis.
+  return proteger("inteligencia:ejecutar", "Solicitud registrada. Queda en cola: el análisis aún no se ejecuta.", async (ctx) => {
+    await servicio.solicitarEjecucion(ctx, {
       agenteId: campo(formData, "agenteId"),
       descripcion: campo(formData, "descripcion"),
-    }),
-  );
+      operacionId: campo(formData, "operacionId"),
+    });
+  });
 }
 
 export async function accionDecidirAprobacion(_: EstadoAccion, formData: FormData): Promise<EstadoAccion> {

@@ -187,15 +187,25 @@ export function listarEjecuciones(ctx: ContextoAcceso) {
 }
 
 /** Registra una solicitud en cola. No invoca ningún modelo. */
-export async function solicitarEjecucion(ctx: ContextoAcceso, datos: { agenteId: unknown; descripcion: unknown }) {
+export async function solicitarEjecucion(
+  ctx: ContextoAcceso,
+  datos: { agenteId: unknown; descripcion: unknown; operacionId?: unknown },
+) {
   const agente = await agenteDeEmpresa(ctx, datos.agenteId);
   if (!agente.activo) throw new ErrorValidacion("El agente está desactivado.");
-  await db.ejecucion.create({
+  const operacionId = typeof datos.operacionId === "string" && datos.operacionId ? datos.operacionId : undefined;
+  if (operacionId) {
+    const operacion = /^[0-9a-f-]{36}$/i.test(operacionId)
+      ? await db.operacion.findFirst({ where: { id: operacionId, empresaId: ctx.empresaId }, select: { id: true } })
+      : null;
+    if (!operacion) throw new ErrorValidacion("La operación seleccionada no existe en esta empresa.");
+  }
+  return db.ejecucion.create({
     data: {
       empresaId: ctx.empresaId,
       agenteId: agente.id,
       solicitadaPorId: ctx.usuarioId,
-      entrada: { descripcion: texto(datos.descripcion, "Descripción", 5, 2000) },
+      entrada: { descripcion: texto(datos.descripcion, "Descripción", 5, 2000), ...(operacionId ? { operacionId } : {}) },
     },
   });
 }
