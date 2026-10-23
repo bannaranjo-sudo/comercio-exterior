@@ -83,7 +83,7 @@ export function listarResultadosPorRevisar(ctx: ContextoAcceso) {
     where: { empresaId: ctx.empresaId, aprobacion: { estado: "PENDIENTE" } },
     include: {
       aprobacion: true,
-      ejecucion: { select: { id: true, agente: { select: { nombre: true } }, solicitadaPor: { select: { nombre: true } } } },
+      ejecucion: { select: { id: true, solicitadaPorId: true, agente: { select: { nombre: true } }, solicitadaPor: { select: { nombre: true } } } },
     },
     orderBy: { creadoEn: "desc" },
     take: 50,

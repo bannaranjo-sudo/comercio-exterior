@@ -25,7 +25,7 @@ const contenidoDe = async (ejecucionId: string) => (await db.resultado.findFirst
 
 describe("Análisis documental", () => {
   let e: Awaited<ReturnType<typeof escenario>>;
-  let alfa: ContextoAcceso, operador: ContextoAcceso, consulta: ContextoAcceso, beta: ContextoAcceso;
+  let alfa: ContextoAcceso, admin2: ContextoAcceso, operador: ContextoAcceso, consulta: ContextoAcceso, beta: ContextoAcceso;
   let op: { id: string; numero: string }, opBeta: { id: string };
   let factura: { id: string }, lista: { id: string }, escaneado: { id: string }, corrupto: { id: string }, otraOp: { id: string };
   let docBeta: { id: string };
@@ -56,11 +56,12 @@ describe("Análisis documental", () => {
   before(async () => {
     e = await escenario([
       { alias: "admin-alfa", empresa: "DEMO-0001", rol: "Administrador" },
+      { alias: "admin2-alfa", empresa: "DEMO-0001", rol: "Administrador" },
       { alias: "operador-alfa", empresa: "DEMO-0001", rol: "Operador" },
       { alias: "consulta-alfa", empresa: "DEMO-0001", rol: "Consulta" },
       { alias: "admin-beta", empresa: "DEMO-0002", rol: "Administrador" },
     ]);
-    [alfa, operador, consulta, beta] = [e.ctx["admin-alfa"], e.ctx["operador-alfa"], e.ctx["consulta-alfa"], e.ctx["admin-beta"]];
+    [alfa, admin2, operador, consulta, beta] = [e.ctx["admin-alfa"], e.ctx["admin2-alfa"], e.ctx["operador-alfa"], e.ctx["consulta-alfa"], e.ctx["admin-beta"]];
     await servicio.inicializarAgentesPredeterminados(alfa);
     const prov = await terceros.crearTercero(alfa, { razonSocial: "Proveedor", identificacionFiscal: "AD-P", ambito: "INTERNACIONAL", roles: ["PROVEEDOR"], pais: "China" });
     const provB = await terceros.crearTercero(beta, { razonSocial: "Proveedor B", identificacionFiscal: "AD-PB", ambito: "INTERNACIONAL", roles: ["PROVEEDOR"], pais: "India" });
@@ -236,7 +237,7 @@ describe("Análisis documental", () => {
 
     it("revisión humana: enviar, devolver con observaciones, reenviar, aprobar; permisos y aislamiento", async () => {
       modo("simulado");
-      const r = await analisis.solicitarAnalisisDocumental(alfa, seleccion(factura, lista));
+      const r = await analisis.solicitarAnalisisDocumental(operador, seleccion(factura, lista));
       const resultado = await db.resultado.findFirstOrThrow({ where: { ejecucionId: r.ejecucionId } });
       assert.equal(await vistas.contarPorRevisar(alfa), 0); // aún no enviado
       await assert.rejects(analisis.enviarARevision(beta, resultado.id), rechaza); // otra empresa
@@ -272,10 +273,10 @@ describe("Análisis documental", () => {
 
     it("impide análisis duplicados mientras el informe siga vigente y los permite tras rechazar o devolver", async () => {
       modo("simulado");
-      const r = await analisis.solicitarAnalisisDocumental(alfa, seleccion(factura));
+      const r = await analisis.solicitarAnalisisDocumental(operador, seleccion(factura));
       await assert.rejects(analisis.solicitarAnalisisDocumental(alfa, seleccion(factura)), (x: unknown) => rechaza(x) && /vigente/.test((x as Error).message));
       const resultado = await db.resultado.findFirstOrThrow({ where: { ejecucionId: r.ejecucionId } });
-      await analisis.enviarARevision(alfa, resultado.id);
+      await analisis.enviarARevision(operador, resultado.id);
       const ap = await db.aprobacion.findFirstOrThrow({ where: { resultadoId: resultado.id } });
       await assert.rejects(analisis.solicitarAnalisisDocumental(alfa, seleccion(factura)), rechaza);
       await servicio.decidirAprobacion(alfa, { aprobacionId: ap.id, decision: "RECHAZADO", comentario: "No procede" });
@@ -305,6 +306,60 @@ describe("Análisis documental", () => {
       assert.equal(llamadas, 1);
       assert.equal(await db.registroUso.count({ where: { ejecucionId: r.ejecucionId } }), 1);
       assert.equal(await db.resultado.count(), 1);
+    });
+  });
+
+  describe("separación entre solicitante y aprobador", () => {
+    it("quien solicitó el análisis no puede aprobarlo, rechazarlo ni devolverlo; otra persona con permiso sí", async () => {
+      modo("simulado");
+      const r = await analisis.solicitarAnalisisDocumental(alfa, seleccion(factura, lista));
+      const resultado = await db.resultado.findFirstOrThrow({ where: { ejecucionId: r.ejecucionId } });
+      await analisis.enviarARevision(alfa, resultado.id);
+      const ap = await db.aprobacion.findFirstOrThrow({ where: { resultadoId: resultado.id } });
+      for (const decision of ["APROBADO", "RECHAZADO", "DEVUELTO"]) {
+        await assert.rejects(
+          servicio.decidirAprobacion(alfa, { aprobacionId: ap.id, decision, comentario: "Observaciones suficientes" }),
+          (x: unknown) => rechaza(x) && /usted mismo solicit/.test((x as Error).message),
+          decision,
+        );
+      }
+      const intacta = await db.aprobacion.findUniqueOrThrow({ where: { id: ap.id } });
+      assert.deepEqual([intacta.estado, intacta.decididaPorId, intacta.decididaEn], ["PENDIENTE", null, null]);
+      // Decisiones simultáneas: gana siempre la otra persona, nunca el solicitante.
+      const carrera = await Promise.allSettled([
+        servicio.decidirAprobacion(alfa, { aprobacionId: ap.id, decision: "APROBADO", comentario: "" }),
+        servicio.decidirAprobacion(admin2, { aprobacionId: ap.id, decision: "APROBADO", comentario: "Conforme" }),
+        servicio.decidirAprobacion(alfa, { aprobacionId: ap.id, decision: "RECHAZADO", comentario: "" }),
+      ]);
+      assert.deepEqual(carrera.map((c) => c.status), ["rejected", "fulfilled", "rejected"]);
+      const final = await db.aprobacion.findUniqueOrThrow({ where: { id: ap.id } });
+      assert.deepEqual([final.estado, final.decididaPorId], ["APROBADO", admin2.usuarioId]);
+      assert.notEqual(final.decididaPorId, alfa.usuarioId);
+    });
+
+    it("no altera las decisiones históricas ya registradas", async () => {
+      const agente = (await servicio.listarAgentes(alfa)).find((a) => a.codigo === "documental")!;
+      const ej = await db.ejecucion.create({ data: { empresaId: e.alfaId, agenteId: agente.id, solicitadaPorId: alfa.usuarioId, estado: "COMPLETADA", entrada: { tipo: "otro" } } });
+      const res = await db.resultado.create({ data: { empresaId: e.alfaId, ejecucionId: ej.id, titulo: "Histórico", contenido: { texto: "antiguo" } } });
+      const fecha = new Date("2026-10-01T10:00:00Z");
+      const historica = await db.aprobacion.create({ data: { empresaId: e.alfaId, resultadoId: res.id, estado: "APROBADO", decididaPorId: alfa.usuarioId, decididaEn: fecha, comentario: "aprobada antes de la regla" } });
+      // Sigue intacta y legible; un nuevo intento recibe el mensaje de "ya resuelta", no el de separación.
+      await assert.rejects(servicio.decidirAprobacion(admin2, { aprobacionId: historica.id, decision: "RECHAZADO", comentario: "x" }), (x: unknown) => rechaza(x) && /ya fue resuelta/.test((x as Error).message));
+      await assert.rejects(servicio.decidirAprobacion(alfa, { aprobacionId: historica.id, decision: "RECHAZADO", comentario: "x" }), (x: unknown) => rechaza(x) && /ya fue resuelta/.test((x as Error).message));
+      const despues = await db.aprobacion.findUniqueOrThrow({ where: { id: historica.id } });
+      assert.deepEqual([despues.estado, despues.decididaPorId, despues.decididaEn?.toISOString(), despues.comentario], ["APROBADO", alfa.usuarioId, fecha.toISOString(), "aprobada antes de la regla"]);
+      assert.equal((await vistas.obtenerSolicitud(alfa, ej.id))?.resultados[0].aprobacion?.estado, "APROBADO");
+    });
+
+    it("la regla vale para cualquier análisis y empresa (otra empresa sigue sin poder decidir)", async () => {
+      modo("simulado");
+      const r = await analisis.solicitarAnalisisDocumental(operador, seleccion(factura));
+      const resultado = await db.resultado.findFirstOrThrow({ where: { ejecucionId: r.ejecucionId } });
+      await analisis.enviarARevision(operador, resultado.id);
+      const ap = await db.aprobacion.findFirstOrThrow({ where: { resultadoId: resultado.id } });
+      await assert.rejects(servicio.decidirAprobacion(beta, { aprobacionId: ap.id, decision: "APROBADO", comentario: "" }), (x: unknown) => rechaza(x) && /no existe o ya fue/.test((x as Error).message));
+      await servicio.decidirAprobacion(alfa, { aprobacionId: ap.id, decision: "APROBADO", comentario: "Revisado por un tercero" });
+      assert.equal((await db.aprobacion.findUniqueOrThrow({ where: { id: ap.id } })).decididaPorId, alfa.usuarioId);
     });
   });
 

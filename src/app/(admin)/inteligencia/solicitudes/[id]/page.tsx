@@ -137,7 +137,11 @@ export default async function Page({ params, searchParams }: { params: Promise<{
                 <p className="text-sm text-muted-foreground">Su rol no permite enviar el informe a revisión.</p>
               ))}
             {revision === "PENDIENTE" && resultado.aprobacion &&
-              (puedeAprobar ? (
+              (solicitud.solicitadaPorId === ctx.usuarioId ? (
+                <Alerta tono="info" titulo="Pendiente de otra persona">
+                  Usted solicitó este análisis, por lo que no puede aprobarlo, rechazarlo ni devolverlo. Debe decidir otra persona con permiso de aprobación.
+                </Alerta>
+              ) : puedeAprobar ? (
                 <DecisionRevision accion={accionDecidirAprobacion} aprobacionId={resultado.aprobacion.id} idCampo={`obs-${resultado.id}`} />
               ) : (
                 <p className="text-sm text-muted-foreground">Pendiente de decisión. Su rol puede consultar el informe, pero no decidir.</p>

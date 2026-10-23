@@ -225,11 +225,22 @@ export async function decidirAprobacion(
   if (datos.decision === "DEVUELTO" && (comentario?.length ?? 0) < 5) {
     throw new ErrorValidacion("Indique las observaciones para devolver el análisis (mínimo 5 caracteres).");
   }
+  // Separación de funciones: quien solicitó el análisis no puede decidir sobre él. La condición va en la misma sentencia
+  // que la decisión, de modo que no hay ventana entre comprobar y escribir. Las decisiones ya registradas no se tocan.
   const { count } = await db.aprobacion.updateMany({
-    where: { id, empresaId: ctx.empresaId, estado: "PENDIENTE" },
+    where: { id, empresaId: ctx.empresaId, estado: "PENDIENTE", resultado: { ejecucion: { solicitadaPorId: { not: ctx.usuarioId } } } },
     data: { estado: datos.decision, decididaPorId: ctx.usuarioId, decididaEn: new Date(), comentario },
   });
-  if (count === 0) throw new ErrorValidacion("La aprobación no existe o ya fue resuelta.");
+  if (count === 0) {
+    const actual = await db.aprobacion.findFirst({
+      where: { id, empresaId: ctx.empresaId },
+      select: { estado: true, resultado: { select: { ejecucion: { select: { solicitadaPorId: true } } } } },
+    });
+    if (actual?.estado === "PENDIENTE" && actual.resultado.ejecucion.solicitadaPorId === ctx.usuarioId) {
+      throw new ErrorValidacion("No puede decidir sobre un análisis que usted mismo solicitó. Debe revisarlo otra persona con permiso de aprobación.");
+    }
+    throw new ErrorValidacion("La aprobación no existe o ya fue resuelta.");
+  }
 }
 
 // ---------------------------------------------------------------------------

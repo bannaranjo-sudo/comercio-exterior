@@ -61,10 +61,13 @@ export default async function Page() {
               </div>
             )
           })()}
-          {puedeAprobar && r.aprobacion && (
+          {puedeAprobar && r.aprobacion && r.ejecucion.solicitadaPorId !== ctx.usuarioId && (
             <div className="mt-4">
               <DecisionRevision accion={accionDecidirAprobacion} aprobacionId={r.aprobacion.id} idCampo={`obs-${r.id}`} />
             </div>
+          )}
+          {puedeAprobar && r.aprobacion && r.ejecucion.solicitadaPorId === ctx.usuarioId && (
+            <p className="mt-4 text-sm text-muted-foreground">Usted solicitó este análisis: debe decidir otra persona con permiso de aprobación.</p>
           )}
         </Seccion>
       ))}

@@ -93,7 +93,7 @@ describe("Centro de Inteligencia · vistas operativas", () => {
   });
 
   it("lista solo los resultados pendientes de revisión de la empresa y respeta la aprobación humana", async () => {
-    const ejecucion = await db.ejecucion.findFirstOrThrow({ where: { empresaId: e.alfaId } });
+    const ejecucion = await db.ejecucion.findFirstOrThrow({ where: { empresaId: e.alfaId, solicitadaPorId: operador.usuarioId } });
     const resultado = await db.resultado.create({ data: { empresaId: e.alfaId, ejecucionId: ejecucion.id, titulo: "Hallazgos", contenido: { texto: "demo" } } });
     const aprobacion = await db.aprobacion.create({ data: { empresaId: e.alfaId, resultadoId: resultado.id } });
     assert.equal(await vistas.contarPorRevisar(alfa), 1);
